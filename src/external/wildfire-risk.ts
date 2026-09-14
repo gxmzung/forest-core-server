@@ -46,8 +46,21 @@ export async function fetchWildfireRisk(params: {
     throw new Error("KFS_WILDFIRE_SERVICE_KEY is not configured");
   }
 
+  /* KFS_SERVICE_KEY_NORMALIZE
+   * Public Data Portal may provide an already percent-encoded ServiceKey.
+   * URLSearchParams performs its own encoding, so normalize the key first
+   * to avoid %2F -> %252F style double-encoding.
+   */
+  let normalizedServiceKey = params.serviceKey;
+
+  try {
+    normalizedServiceKey = decodeURIComponent(params.serviceKey);
+  } catch {
+    normalizedServiceKey = params.serviceKey;
+  }
+
   const query = new URLSearchParams({
-    serviceKey: params.serviceKey,
+    serviceKey: normalizedServiceKey,
     pageNo: String(params.pageNo ?? 1),
     numOfRows: String(params.numOfRows ?? 230),
   });
