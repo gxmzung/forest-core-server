@@ -1,12 +1,14 @@
 import { Hono } from "hono";
 import { parseDroneTelemetry } from "./schema.js";
+import { telemetryHub, type TelemetryHub } from "./hub.js";
 import {
   createMemoryTelemetryStore,
   type TelemetryStore
 } from "./store.js";
 
 export function createTelemetryRoutes(
-  store: TelemetryStore = createMemoryTelemetryStore()
+  store: TelemetryStore = createMemoryTelemetryStore(),
+  hub: TelemetryHub = telemetryHub
 ) {
   const routes = new Hono();
 
@@ -26,7 +28,16 @@ export function createTelemetryRoutes(
 
     try {
       const telemetry = parseDroneTelemetry(body);
+      const previous = store.get(telemetry.droneId);
       const stored = store.put(telemetry);
+
+      const acceptedAsLatest =
+        previous == null ||
+        Date.parse(telemetry.timestamp) >= Date.parse(previous.timestamp);
+
+      if (acceptedAsLatest) {
+        hub.publish(stored);
+      }
 
       return c.json({
         data: {
