@@ -84,10 +84,38 @@ test("장비 네트워크 설정 저장과 조회가 동작한다", async () => 
   assert.equal(body.data.mavlinkForwarding.targetPort, 14550);
 });
 
-test("RTSP probe는 TCP 연결 가능 여부를 반환한다", async () => {
+test("RTSP probe는 RTSP OPTIONS 응답을 확인한다", async () => {
   const { app } = await import("../src/app.js");
 
-  const server = net.createServer();
+  const channelResponse = await app.request(
+    `/api/v1/assets/${assetId}/video-channels`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        channelCode: "RTSP-PROBE-TEST",
+        channelName: "RTSP probe test",
+        streamUri: "rtsp://127.0.0.1:18554/live",
+        enabled: true,
+      }),
+    },
+  );
+
+  assert.equal(channelResponse.status, 201);
+
+
+  const server = net.createServer((socket) => {
+    socket.once("data", (data) => {
+      assert.match(data.toString("utf8"), /^OPTIONS rtsp:\/\/127\.0\.0\.1:18554\/live RTSP\/1\.0/);
+
+      socket.write(
+        "RTSP/1.0 200 OK\r\n" +
+        "CSeq: 1\r\n" +
+        "Public: OPTIONS, DESCRIBE, SETUP, PLAY\r\n" +
+        "\r\n",
+      );
+    });
+  });
 
   await new Promise<void>((resolve) => {
     server.listen(18554, "127.0.0.1", resolve);
@@ -104,12 +132,18 @@ test("RTSP probe는 TCP 연결 가능 여부를 반환한다", async () => {
     );
 
     const body = await response.json() as {
-      data: { type: string; success: boolean; elapsedMs: number };
+      data: {
+        type: string;
+        success: boolean;
+        detail: string;
+        elapsedMs: number;
+      };
     };
 
     assert.equal(response.status, 200);
     assert.equal(body.data.type, "RTSP");
     assert.equal(body.data.success, true);
+    assert.match(body.data.detail, /OPTIONS.*200/);
     assert.ok(body.data.elapsedMs >= 0);
   } finally {
     await new Promise<void>((resolve, reject) => {

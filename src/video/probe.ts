@@ -70,11 +70,67 @@ export async function probeRtsp(
 
     socket.setTimeout(timeoutMs);
 
+    let response = "";
+
     socket.once("connect", () => {
-      finish(
-        true,
-        `RTSP TCP ${host}:${port} 연결에 성공했습니다.`,
+      const requestUri = url.toString();
+
+      socket.write(
+        `OPTIONS ${requestUri} RTSP/1.0\r\n` +
+        `CSeq: 1\r\n` +
+        `User-Agent: forest-core-server/1.0\r\n` +
+        `\r\n`,
       );
+    });
+
+    socket.on("data", (chunk) => {
+      response += chunk.toString("utf8");
+
+      const headerEnd = response.indexOf("\r\n\r\n");
+      if (headerEnd < 0) return;
+
+      const statusLine = response.slice(0, headerEnd).split("\r\n")[0] ?? "";
+      const match = /^RTSP\/1\.0\s+(\d{3})(?:\s+.*)?$/.exec(statusLine);
+
+      if (!match) {
+        finish(
+          false,
+          `RTSP ${host}:${port}에서 올바른 RTSP 응답을 받지 못했습니다.`,
+        );
+        return;
+      }
+
+      const statusCode = Number(match[1]);
+
+      if (statusCode >= 200 && statusCode < 400) {
+        finish(
+          true,
+          `RTSP ${host}:${port} OPTIONS 응답을 확인했습니다. (${statusCode})`,
+        );
+        return;
+      }
+
+      if (statusCode === 401 || statusCode === 403) {
+        finish(
+          false,
+          `RTSP ${host}:${port} 서버가 인증을 요구합니다. (${statusCode})`,
+        );
+        return;
+      }
+
+      finish(
+        false,
+        `RTSP ${host}:${port} OPTIONS 요청이 거부되었습니다. (${statusCode})`,
+      );
+    });
+
+    socket.once("end", () => {
+      if (!settled) {
+        finish(
+          false,
+          `RTSP ${host}:${port} 서버가 RTSP 응답 없이 연결을 종료했습니다.`,
+        );
+      }
     });
 
     socket.once("timeout", () => {
