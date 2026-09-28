@@ -151,24 +151,3 @@ test("accepts GPS quality telemetry fields", () => {
   assert.equal(telemetry.horizontalAccuracy, 0.35);
 });
 
-test("accepts GPS quality telemetry fields", () => {
-  const telemetry = parseDroneTelemetry({
-    droneId: "SITL-001",
-    timestamp: "2026-09-28T07:30:00Z",
-    latitude: -35.3633515,
-    longitude: 149.1652412,
-    altitude: 587,
-    positionSource: "GLOBAL_POSITION_INT(33)",
-    gpsFixType: 6,
-    satellitesVisible: 18,
-    hdop: 0.85,
-    vdop: 1.2,
-    horizontalAccuracy: 0.35,
-    verticalAccuracy: 0.65
-  });
-
-  assert.equal(telemetry.gpsFixType, 6);
-  assert.equal(telemetry.satellitesVisible, 18);
-  assert.equal(telemetry.hdop, 0.85);
-  assert.equal(telemetry.horizontalAccuracy, 0.35);
-});
