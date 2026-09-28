@@ -150,4 +150,3 @@ test("accepts GPS quality telemetry fields", () => {
   assert.equal(telemetry.hdop, 0.85);
   assert.equal(telemetry.horizontalAccuracy, 0.35);
 });
-
