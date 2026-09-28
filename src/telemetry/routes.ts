@@ -2,12 +2,12 @@ import { Hono } from "hono";
 import { parseDroneTelemetry } from "./schema.js";
 import { telemetryHub, type TelemetryHub } from "./hub.js";
 import {
-  createMemoryTelemetryStore,
+  telemetryStore,
   type TelemetryStore
 } from "./store.js";
 
 export function createTelemetryRoutes(
-  store: TelemetryStore = createMemoryTelemetryStore(),
+  store: TelemetryStore = telemetryStore,
   hub: TelemetryHub = telemetryHub
 ) {
   const routes = new Hono();

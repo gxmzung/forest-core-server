@@ -1,5 +1,6 @@
 import { Hono, type Context } from "hono";
 import { readAssetLogs } from "./asset-logs.js";
+import { readDashboardDroneTelemetry } from "./telemetry.js";
 import { parseDisasterId, readDisasterAssets } from "./assets.js";
 import { parseAssetId, readAsset, readAssets, readAssetTypes, registerAsset, registerVendorMapping, RegistryError } from "./registry.js";
 
@@ -58,6 +59,22 @@ dashboardRoutes.put("/assets/:assetId/vendor-mappings", async (c) => {
   }
 });
 
+dashboardRoutes.get("/telemetry/drones", (c) => {
+  const eventId = c.req.query("eventId")?.trim();
+
+  if (!eventId) {
+    return c.json({
+      error: {
+        code: "INVALID_REQUEST",
+        message: "eventId is required."
+      }
+    }, 400);
+  }
+
+  return c.json({
+    data: readDashboardDroneTelemetry(eventId)
+  });
+});
 dashboardRoutes.get("/disasters/:disasterId/assets", async (c) => {
   try {
     const disasterId = parseDisasterId(c.req.param("disasterId"));

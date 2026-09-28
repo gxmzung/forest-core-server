@@ -7,6 +7,7 @@ export type StoredDroneTelemetry = DroneTelemetry & {
 export interface TelemetryStore {
   put(value: DroneTelemetry): StoredDroneTelemetry;
   get(droneId: string): StoredDroneTelemetry | null;
+  list(): StoredDroneTelemetry[];
 }
 
 export function createMemoryTelemetryStore(): TelemetryStore {
@@ -34,6 +35,17 @@ export function createMemoryTelemetryStore(): TelemetryStore {
 
     get(droneId) {
       return latest.get(droneId) ?? null;
+    },
+
+    list() {
+      return [...latest.values()].sort(
+        (a, b) =>
+          Date.parse(b.timestamp) -
+          Date.parse(a.timestamp)
+      );
     }
   };
 }
+
+export const telemetryStore =
+  createMemoryTelemetryStore();
