@@ -4,6 +4,14 @@ export type DroneTelemetry = {
   latitude: number;
   longitude: number;
   altitude: number;
+
+  positionSource?: string;
+  gpsFixType?: number;
+  satellitesVisible?: number;
+  hdop?: number;
+  vdop?: number;
+  horizontalAccuracy?: number;
+  verticalAccuracy?: number;
 };
 
 function requireFiniteNumber(
@@ -24,7 +32,6 @@ function requireIsoTimestamp(value: unknown): string {
 
   const timestamp = value.trim();
 
-  // UTC(Z) 또는 명시적 timezone offset이 있는 ISO-8601 timestamp만 허용한다.
   const iso8601 =
     /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 
@@ -33,6 +40,62 @@ function requireIsoTimestamp(value: unknown): string {
   }
 
   return timestamp;
+}
+
+function optionalFiniteNonNegative(
+  value: unknown,
+  name: string
+): number | undefined {
+  if (value == null) {
+    return undefined;
+  }
+
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value < 0
+  ) {
+    throw new Error(`${name} is invalid`);
+  }
+
+  return value;
+}
+
+function optionalInteger(
+  value: unknown,
+  name: string,
+  min: number,
+  max: number
+): number | undefined {
+  if (value == null) {
+    return undefined;
+  }
+
+  if (
+    typeof value !== "number" ||
+    !Number.isInteger(value) ||
+    value < min ||
+    value > max
+  ) {
+    throw new Error(`${name} is invalid`);
+  }
+
+  return value;
+}
+
+function optionalString(
+  value: unknown,
+  name: string
+): string | undefined {
+  if (value == null) {
+    return undefined;
+  }
+
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`${name} is invalid`);
+  }
+
+  return value.trim();
 }
 
 export function parseDroneTelemetry(value: unknown): DroneTelemetry {
@@ -47,6 +110,7 @@ export function parseDroneTelemetry(value: unknown): DroneTelemetry {
   }
 
   const droneId = row.droneId.trim();
+
   if (!droneId) {
     throw new Error("droneId is required");
   }
@@ -69,6 +133,52 @@ export function parseDroneTelemetry(value: unknown): DroneTelemetry {
     timestamp,
     latitude,
     longitude,
-    altitude
+    altitude,
+
+    positionSource:
+      optionalString(
+        row.positionSource,
+        "positionSource"
+      ),
+
+    gpsFixType:
+      optionalInteger(
+        row.gpsFixType,
+        "gpsFixType",
+        0,
+        255
+      ),
+
+    satellitesVisible:
+      optionalInteger(
+        row.satellitesVisible,
+        "satellitesVisible",
+        0,
+        254
+      ),
+
+    hdop:
+      optionalFiniteNonNegative(
+        row.hdop,
+        "hdop"
+      ),
+
+    vdop:
+      optionalFiniteNonNegative(
+        row.vdop,
+        "vdop"
+      ),
+
+    horizontalAccuracy:
+      optionalFiniteNonNegative(
+        row.horizontalAccuracy,
+        "horizontalAccuracy"
+      ),
+
+    verticalAccuracy:
+      optionalFiniteNonNegative(
+        row.verticalAccuracy,
+        "verticalAccuracy"
+      )
   };
 }

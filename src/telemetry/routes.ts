@@ -33,7 +33,8 @@ export function createTelemetryRoutes(
 
       const acceptedAsLatest =
         previous == null ||
-        Date.parse(telemetry.timestamp) >= Date.parse(previous.timestamp);
+        Date.parse(telemetry.timestamp) >=
+          Date.parse(previous.timestamp);
 
       if (acceptedAsLatest) {
         hub.publish(stored);
@@ -45,10 +46,21 @@ export function createTelemetryRoutes(
           droneId: stored.droneId,
           observedAt: stored.timestamp,
           receivedAt: stored.receivedAt,
+
           position: {
             latitude: stored.latitude,
             longitude: stored.longitude,
-            altitude: stored.altitude
+            altitude: stored.altitude,
+            source: stored.positionSource
+          },
+
+          gpsQuality: {
+            fixType: stored.gpsFixType,
+            satellitesVisible: stored.satellitesVisible,
+            hdop: stored.hdop,
+            vdop: stored.vdop,
+            horizontalAccuracy: stored.horizontalAccuracy,
+            verticalAccuracy: stored.verticalAccuracy
           }
         }
       }, 202);
@@ -56,9 +68,10 @@ export function createTelemetryRoutes(
       return c.json({
         error: {
           code: "INVALID_TELEMETRY",
-          message: error instanceof Error
-            ? error.message
-            : "telemetry payload is invalid"
+          message:
+            error instanceof Error
+              ? error.message
+              : "telemetry payload is invalid"
         }
       }, 400);
     }
@@ -92,10 +105,21 @@ export function createTelemetryRoutes(
         droneId: telemetry.droneId,
         observedAt: telemetry.timestamp,
         receivedAt: telemetry.receivedAt,
+
         position: {
           latitude: telemetry.latitude,
           longitude: telemetry.longitude,
-          altitude: telemetry.altitude
+          altitude: telemetry.altitude,
+          source: telemetry.positionSource
+        },
+
+        gpsQuality: {
+          fixType: telemetry.gpsFixType,
+          satellitesVisible: telemetry.satellitesVisible,
+          hdop: telemetry.hdop,
+          vdop: telemetry.vdop,
+          horizontalAccuracy: telemetry.horizontalAccuracy,
+          verticalAccuracy: telemetry.verticalAccuracy
         }
       }
     });
