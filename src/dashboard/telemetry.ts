@@ -67,6 +67,31 @@ export function readDashboardDroneTelemetry(
       verticalAccuracy:
         telemetry.verticalAccuracy,
 
+      pathEvidence: {
+        uplinkReceivedAt:
+          telemetry.pathEvidence
+            ?.uplinkReceivedAt,
+
+        uplinkForwardStartedAt:
+          telemetry.pathEvidence
+            ?.uplinkForwardStartedAt,
+
+        uplinkSource:
+          telemetry.pathEvidence
+            ?.uplinkSource,
+
+        uplinkBytes:
+          telemetry.pathEvidence
+            ?.uplinkBytes,
+
+        transport:
+          telemetry.pathEvidence
+            ?.transport,
+
+        coreReceivedAt:
+          telemetry.receivedAt
+      },
+
       linkQuality: {
         mavlinkVersion:
           telemetry.mavlinkVersion,

@@ -1,3 +1,11 @@
+export type TelemetryPathEvidence = {
+  uplinkReceivedAt?: string;
+  uplinkForwardStartedAt?: string;
+  uplinkSource?: string;
+  uplinkBytes?: number;
+  transport?: string;
+};
+
 export type DroneTelemetry = {
   droneId: string;
   timestamp: string;
@@ -26,6 +34,8 @@ export type DroneTelemetry = {
   periodAvgMs?: number;
   periodP95Ms?: number;
   periodMaxMs?: number;
+
+  pathEvidence?: TelemetryPathEvidence;
 };
 
 function requireFiniteNumber(
@@ -133,6 +143,77 @@ function optionalString(
   }
 
   return value.trim();
+}
+
+function optionalIsoTimestamp(
+  value: unknown,
+  name: string
+): string | undefined {
+  if (value == null) {
+    return undefined;
+  }
+
+  try {
+    return requireIsoTimestamp(value);
+  } catch {
+    throw new Error(
+      `${name} must be ISO-8601`
+    );
+  }
+}
+
+function optionalPathEvidence(
+  value: unknown
+): TelemetryPathEvidence | undefined {
+  if (value == null) {
+    return undefined;
+  }
+
+  if (
+    typeof value !== "object" ||
+    Array.isArray(value)
+  ) {
+    throw new Error(
+      "pathEvidence is invalid"
+    );
+  }
+
+  const row =
+    value as Record<string, unknown>;
+
+  return {
+    uplinkReceivedAt:
+      optionalIsoTimestamp(
+        row.uplinkReceivedAt,
+        "pathEvidence.uplinkReceivedAt"
+      ),
+
+    uplinkForwardStartedAt:
+      optionalIsoTimestamp(
+        row.uplinkForwardStartedAt,
+        "pathEvidence.uplinkForwardStartedAt"
+      ),
+
+    uplinkSource:
+      optionalString(
+        row.uplinkSource,
+        "pathEvidence.uplinkSource"
+      ),
+
+    uplinkBytes:
+      optionalInteger(
+        row.uplinkBytes,
+        "pathEvidence.uplinkBytes",
+        0,
+        10_000_000
+      ),
+
+    transport:
+      optionalString(
+        row.transport,
+        "pathEvidence.transport"
+      )
+  };
 }
 
 export function parseDroneTelemetry(value: unknown): DroneTelemetry {
@@ -306,6 +387,11 @@ export function parseDroneTelemetry(value: unknown): DroneTelemetry {
       optionalFiniteNonNegative(
         row.periodMaxMs,
         "periodMaxMs"
+      ),
+
+    pathEvidence:
+      optionalPathEvidence(
+        row.pathEvidence
       )
   };
 }
