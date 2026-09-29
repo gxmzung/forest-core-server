@@ -36,6 +36,9 @@ export function readDashboardDroneTelemetry(
 
     operationalStatus: "ACTIVE",
 
+    packetLossPct:
+      telemetry.packetLossPct,
+
     positioningMethod:
       positioningMethod(
         telemetry.gpsFixType
@@ -62,7 +65,34 @@ export function readDashboardDroneTelemetry(
         telemetry.horizontalAccuracy,
 
       verticalAccuracy:
-        telemetry.verticalAccuracy
+        telemetry.verticalAccuracy,
+
+      linkQuality: {
+        mavlinkVersion:
+          telemetry.mavlinkVersion,
+        mavlinkSystemId:
+          telemetry.mavlinkSystemId,
+        mavlinkComponentId:
+          telemetry.mavlinkComponentId,
+        mavlinkSequence:
+          telemetry.mavlinkSequence,
+        mavlinkMessageId:
+          telemetry.mavlinkMessageId,
+        windowExpected:
+          telemetry.qualityWindowExpected,
+        windowReceived:
+          telemetry.qualityWindowReceived,
+        windowLost:
+          telemetry.qualityWindowLost,
+        packetLossPct:
+          telemetry.packetLossPct,
+        periodAvgMs:
+          telemetry.periodAvgMs,
+        periodP95Ms:
+          telemetry.periodP95Ms,
+        periodMaxMs:
+          telemetry.periodMaxMs
+      }
     }
   }));
 }

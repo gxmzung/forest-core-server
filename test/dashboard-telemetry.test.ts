@@ -27,7 +27,19 @@ test(
       hdop: 0.85,
       vdop: 1.2,
       horizontalAccuracy: 0.35,
-      verticalAccuracy: 0.65
+      verticalAccuracy: 0.65,
+      mavlinkVersion: 2,
+      mavlinkSystemId: 1,
+      mavlinkComponentId: 1,
+      mavlinkSequence: 42,
+      mavlinkMessageId: 33,
+      qualityWindowExpected: 100,
+      qualityWindowReceived: 99,
+      qualityWindowLost: 1,
+      packetLossPct: 1,
+      periodAvgMs: 64.01,
+      periodP95Ms: 78,
+      periodMaxMs: 82
     });
 
     const rows =
@@ -86,6 +98,16 @@ test(
     assert.equal(
       rows[0].attributes.horizontalAccuracy,
       0.35
+    );
+
+    assert.equal(rows[0].packetLossPct, 1);
+    assert.equal(
+      rows[0].attributes.linkQuality.periodP95Ms,
+      78
+    );
+    assert.equal(
+      rows[0].attributes.linkQuality.windowLost,
+      1
     );
   }
 );

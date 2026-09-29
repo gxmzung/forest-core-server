@@ -9,6 +9,22 @@ export type TelemetryStreamMessage = {
   longitude: number;
   altitude: number;
   assetType: "UAV";
+  packetLossPct?: number;
+  attributes?: {
+    linkQuality?: {
+      mavlinkVersion?: number;
+      mavlinkSystemId?: number;
+      mavlinkComponentId?: number;
+      mavlinkSequence?: number;
+      mavlinkMessageId?: number;
+      windowExpected?: number;
+      windowReceived?: number;
+      windowLost?: number;
+      periodAvgMs?: number;
+      periodP95Ms?: number;
+      periodMaxMs?: number;
+    };
+  };
 };
 
 type Listener = (message: TelemetryStreamMessage) => void;
@@ -35,7 +51,23 @@ export function createTelemetryHub(): TelemetryHub {
         latitude: value.latitude,
         longitude: value.longitude,
         altitude: value.altitude,
-        assetType: "UAV"
+        assetType: "UAV",
+        packetLossPct: value.packetLossPct,
+        attributes: {
+          linkQuality: {
+            mavlinkVersion: value.mavlinkVersion,
+            mavlinkSystemId: value.mavlinkSystemId,
+            mavlinkComponentId: value.mavlinkComponentId,
+            mavlinkSequence: value.mavlinkSequence,
+            mavlinkMessageId: value.mavlinkMessageId,
+            windowExpected: value.qualityWindowExpected,
+            windowReceived: value.qualityWindowReceived,
+            windowLost: value.qualityWindowLost,
+            periodAvgMs: value.periodAvgMs,
+            periodP95Ms: value.periodP95Ms,
+            periodMaxMs: value.periodMaxMs
+          }
+        }
       };
 
       for (const listener of listeners) {

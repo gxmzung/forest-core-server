@@ -12,6 +12,20 @@ export type DroneTelemetry = {
   vdop?: number;
   horizontalAccuracy?: number;
   verticalAccuracy?: number;
+
+  mavlinkVersion?: number;
+  mavlinkSystemId?: number;
+  mavlinkComponentId?: number;
+  mavlinkSequence?: number;
+  mavlinkMessageId?: number;
+
+  qualityWindowExpected?: number;
+  qualityWindowReceived?: number;
+  qualityWindowLost?: number;
+  packetLossPct?: number;
+  periodAvgMs?: number;
+  periodP95Ms?: number;
+  periodMaxMs?: number;
 };
 
 function requireFiniteNumber(
@@ -54,6 +68,29 @@ function optionalFiniteNonNegative(
     typeof value !== "number" ||
     !Number.isFinite(value) ||
     value < 0
+  ) {
+    throw new Error(`${name} is invalid`);
+  }
+
+  return value;
+}
+
+
+function optionalFiniteRange(
+  value: unknown,
+  name: string,
+  min: number,
+  max: number
+): number | undefined {
+  if (value == null) {
+    return undefined;
+  }
+
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value < min ||
+    value > max
   ) {
     throw new Error(`${name} is invalid`);
   }
@@ -179,6 +216,96 @@ export function parseDroneTelemetry(value: unknown): DroneTelemetry {
       optionalFiniteNonNegative(
         row.verticalAccuracy,
         "verticalAccuracy"
+      ),
+
+    mavlinkVersion:
+      optionalInteger(
+        row.mavlinkVersion,
+        "mavlinkVersion",
+        1,
+        2
+      ),
+
+    mavlinkSystemId:
+      optionalInteger(
+        row.mavlinkSystemId,
+        "mavlinkSystemId",
+        0,
+        255
+      ),
+
+    mavlinkComponentId:
+      optionalInteger(
+        row.mavlinkComponentId,
+        "mavlinkComponentId",
+        0,
+        255
+      ),
+
+    mavlinkSequence:
+      optionalInteger(
+        row.mavlinkSequence,
+        "mavlinkSequence",
+        0,
+        255
+      ),
+
+    mavlinkMessageId:
+      optionalInteger(
+        row.mavlinkMessageId,
+        "mavlinkMessageId",
+        0,
+        16777215
+      ),
+
+    qualityWindowExpected:
+      optionalInteger(
+        row.qualityWindowExpected,
+        "qualityWindowExpected",
+        0,
+        100
+      ),
+
+    qualityWindowReceived:
+      optionalInteger(
+        row.qualityWindowReceived,
+        "qualityWindowReceived",
+        0,
+        100
+      ),
+
+    qualityWindowLost:
+      optionalInteger(
+        row.qualityWindowLost,
+        "qualityWindowLost",
+        0,
+        100
+      ),
+
+    packetLossPct:
+      optionalFiniteRange(
+        row.packetLossPct,
+        "packetLossPct",
+        0,
+        100
+      ),
+
+    periodAvgMs:
+      optionalFiniteNonNegative(
+        row.periodAvgMs,
+        "periodAvgMs"
+      ),
+
+    periodP95Ms:
+      optionalFiniteNonNegative(
+        row.periodP95Ms,
+        "periodP95Ms"
+      ),
+
+    periodMaxMs:
+      optionalFiniteNonNegative(
+        row.periodMaxMs,
+        "periodMaxMs"
       )
   };
 }

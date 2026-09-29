@@ -45,6 +45,36 @@ test("accepts ISO-8601 timestamp with timezone offset", () => {
   assert.equal(telemetry.timestamp, "2026-09-22T10:54:17+09:00");
 });
 
+
+test("accepts validated MAVLink link-quality metrics", () => {
+  const telemetry = parseDroneTelemetry({
+    ...valid,
+    mavlinkVersion: 2,
+    mavlinkSystemId: 1,
+    mavlinkComponentId: 1,
+    mavlinkSequence: 42,
+    mavlinkMessageId: 33,
+    qualityWindowExpected: 100,
+    qualityWindowReceived: 99,
+    qualityWindowLost: 1,
+    packetLossPct: 1,
+    periodAvgMs: 64.01,
+    periodP95Ms: 78,
+    periodMaxMs: 82
+  });
+
+  assert.equal(telemetry.packetLossPct, 1);
+  assert.equal(telemetry.periodP95Ms, 78);
+  assert.equal(telemetry.mavlinkSequence, 42);
+});
+
+test("rejects out-of-range packet loss", () => {
+  assert.throws(
+    () => parseDroneTelemetry({ ...valid, packetLossPct: 101 }),
+    /packetLossPct is invalid/
+  );
+});
+
 test("HTTP route rejects malformed JSON", async () => {
   const routes = createTelemetryRoutes(
     createMemoryTelemetryStore(),
