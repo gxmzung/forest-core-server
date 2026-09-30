@@ -72,8 +72,26 @@ app.notFound((c) =>
   ),
 );
 
-app.onError((error, c) =>
-  c.json(
+app.onError((error, c) => {
+  const origin = c.req.header("Origin");
+
+  if (
+    c.req.path.startsWith("/api/v1/external/") &&
+    origin &&
+    [
+      "http://127.0.0.1:15173",
+      "http://localhost:15173",
+      "https://wildfire.forest.tobeunicorn.kr",
+    ].includes(origin)
+  ) {
+    c.header(
+      "Access-Control-Allow-Origin",
+      origin,
+    );
+    c.header("Vary", "Origin");
+  }
+
+  return c.json(
     {
       error: {
         code: "PROCESSING_FAILURE",
@@ -81,5 +99,5 @@ app.onError((error, c) =>
       },
     },
     502,
-  ),
-);
+  );
+});
