@@ -4,6 +4,9 @@ import { dashboardRoutes } from "./dashboard/routes.js";
 import { deviceRoutes } from "./device/routes.js";
 import { readCoreHealth } from "./device/health.js";
 import { externalRoutes } from "./external/routes.js";
+import { videoRoutes } from "./video/routes.js";
+import { telemetryRoutes } from "./telemetry/routes.js";
+import { telemetryWebSocketRoutes } from "./telemetry/websocket.js";
 
 export const app = new Hono();
 
@@ -33,11 +36,50 @@ app.use(
   }),
 );
 
+app.use(
+  "/api/v1/assets/*",
+  cors({
+    origin: [
+      "http://127.0.0.1:15173",
+      "http://localhost:15173",
+      "https://wildfire.forest.tobeunicorn.kr",
+    ],
+    allowMethods: ["GET", "POST", "PATCH", "OPTIONS"],
+    allowHeaders: ["Content-Type", "Authorization", "X-Origin"],
+  }),
+);
+
 app.get("/", (c) => c.json({ service: "forest-core-server", status: "ok" }));
 app.get("/health", async (c) => c.json({ data: await readCoreHealth() }));
+
 app.route("/internal/v1", deviceRoutes);
+app.route("/internal/v1/telemetry", telemetryRoutes);
+app.route("/internal/v1/telemetry", telemetryWebSocketRoutes);
+
 app.route("/api/v1/dashboard", dashboardRoutes);
 app.route("/api/v1/external", externalRoutes);
+app.route("/api/v1/assets", videoRoutes);
 
-app.notFound((c) => c.json({ error: { code: "NOT_FOUND", message: "지원하지 않는 경로입니다." } }, 404));
-app.onError((error, c) => c.json({ error: { code: "PROCESSING_FAILURE", message: error.message } }, 502));
+app.notFound((c) =>
+  c.json(
+    {
+      error: {
+        code: "NOT_FOUND",
+        message: "지원하지 않는 경로입니다.",
+      },
+    },
+    404,
+  ),
+);
+
+app.onError((error, c) =>
+  c.json(
+    {
+      error: {
+        code: "PROCESSING_FAILURE",
+        message: error.message,
+      },
+    },
+    502,
+  ),
+);
