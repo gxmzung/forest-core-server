@@ -3,3 +3,6 @@ dist/
 *.log
 .env*
 !.env.example
+
+data/fieldlink-state.json
+data/fieldlink-state.json.*
