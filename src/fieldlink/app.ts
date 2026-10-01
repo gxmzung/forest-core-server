@@ -6,9 +6,15 @@ import {
   type FieldLinkDeliveredAlert,
 } from "./store.js";
 
+import {
+  FieldOperationsEngine,
+  fieldOperationsEngine,
+} from "../operations/field-operations.js";
+
 type Options = {
   pin?: string;
   store?: FieldLinkStore;
+  operationsEngine?: FieldOperationsEngine;
 
   onAlertAcknowledged?: (
     alert:
@@ -77,6 +83,10 @@ export function createFieldLinkApp(
   const store =
     options.store ??
     new FieldLinkStore();
+
+  const operationsEngine =
+    options.operationsEngine ??
+    fieldOperationsEngine;
 
   const requiredPin =
     options.pin ??
@@ -454,6 +464,264 @@ export function createFieldLinkApp(
               Error
                 ? error.message
                 : "ALERT_ACK_ERROR",
+          },
+          400,
+        );
+      }
+    },
+  );
+
+  app.post(
+    "/api/v1/operations/reports",
+    async (c) => {
+      try {
+        const body =
+          await jsonBody(
+            c.req,
+          );
+
+        const report =
+          operationsEngine
+            .createSituationReport({
+              eventId:
+                body.eventId,
+
+              authorId:
+                body.authorId,
+
+              authorName:
+                body.authorName,
+
+              priority:
+                body.priority,
+
+              title:
+                body.title,
+
+              content:
+                body.content,
+
+              location:
+                body.location,
+            });
+
+        return c.json(
+          report,
+          201,
+        );
+      } catch (error) {
+        return c.json(
+          {
+            error:
+              error instanceof Error
+                ? error.message
+                : "REPORT_CREATE_ERROR",
+          },
+          400,
+        );
+      }
+    },
+  );
+
+  app.get(
+    "/api/v1/operations/reports",
+    (c) =>
+      c.json({
+        reports:
+          operationsEngine
+            .listReports(),
+      }),
+  );
+
+  app.get(
+    "/api/v1/operations/reports/pending",
+    (c) =>
+      c.json({
+        reports:
+          operationsEngine
+            .pendingReports(),
+      }),
+  );
+
+  app.post(
+    "/api/v1/operations/reports/:reportId/sent",
+    (c) => {
+      try {
+        const report =
+          operationsEngine
+            .markReportSent(
+              c.req.param(
+                "reportId",
+              ),
+            );
+
+        if (!report) {
+          return c.json(
+            {
+              error:
+                "REPORT_NOT_FOUND",
+            },
+            404,
+          );
+        }
+
+        return c.json(
+          report,
+        );
+      } catch (error) {
+        return c.json(
+          {
+            error:
+              error instanceof Error
+                ? error.message
+                : "REPORT_SENT_ERROR",
+          },
+          400,
+        );
+      }
+    },
+  );
+
+  app.post(
+    "/api/v1/operations/commands",
+    async (c) => {
+      try {
+        const body =
+          await jsonBody(
+            c.req,
+          );
+
+        const command =
+          operationsEngine
+            .createCommand({
+              eventId:
+                body.eventId,
+
+              senderId:
+                body.senderId,
+
+              senderName:
+                body.senderName,
+
+              priority:
+                body.priority,
+
+              title:
+                body.title,
+
+              instruction:
+                body.instruction,
+
+              recipientIds:
+                body.recipientIds,
+            });
+
+        return c.json(
+          command,
+          201,
+        );
+      } catch (error) {
+        return c.json(
+          {
+            error:
+              error instanceof Error
+                ? error.message
+                : "COMMAND_CREATE_ERROR",
+          },
+          400,
+        );
+      }
+    },
+  );
+
+  app.get(
+    "/api/v1/operations/commands",
+    (c) =>
+      c.json({
+        commands:
+          operationsEngine
+            .listCommands(),
+      }),
+  );
+
+  app.get(
+    "/api/v1/operations/commands/:commandId",
+    (c) => {
+      try {
+        const command =
+          operationsEngine
+            .commandStatus(
+              c.req.param(
+                "commandId",
+              ),
+            );
+
+        if (!command) {
+          return c.json(
+            {
+              error:
+                "COMMAND_NOT_FOUND",
+            },
+            404,
+          );
+        }
+
+        return c.json(
+          command,
+        );
+      } catch (error) {
+        return c.json(
+          {
+            error:
+              error instanceof Error
+                ? error.message
+                : "COMMAND_READ_ERROR",
+          },
+          400,
+        );
+      }
+    },
+  );
+
+  app.post(
+    "/api/v1/operations/commands/:commandId/ack",
+    async (c) => {
+      try {
+        const body =
+          await jsonBody(
+            c.req,
+          );
+
+        const command =
+          operationsEngine
+            .acknowledgeCommand(
+              c.req.param(
+                "commandId",
+              ),
+
+              body.clientId,
+            );
+
+        if (!command) {
+          return c.json(
+            {
+              error:
+                "COMMAND_NOT_FOUND",
+            },
+            404,
+          );
+        }
+
+        return c.json(
+          command,
+        );
+      } catch (error) {
+        return c.json(
+          {
+            error:
+              error instanceof Error
+                ? error.message
+                : "COMMAND_ACK_ERROR",
           },
           400,
         );
