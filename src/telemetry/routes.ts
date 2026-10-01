@@ -5,6 +5,9 @@ import {
   telemetryStore,
   type TelemetryStore
 } from "./store.js";
+import {
+  requirementKpiEngine
+} from "../kpi/engine.js";
 
 export function createTelemetryRoutes(
   store: TelemetryStore = telemetryStore,
@@ -38,6 +41,18 @@ export function createTelemetryRoutes(
 
       if (acceptedAsLatest) {
         hub.publish(stored);
+
+        requirementKpiEngine
+          .recordLocationUpdateForActiveSessions({
+            assetId:
+              stored.droneId,
+
+            observedAt:
+              stored.timestamp,
+
+            receivedAt:
+              stored.receivedAt
+          });
       }
 
       return c.json({
