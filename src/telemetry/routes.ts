@@ -8,6 +8,9 @@ import {
 import {
   requirementKpiEngine
 } from "../kpi/engine.js";
+import {
+  firelineAlertCoordinator
+} from "../alerts/fireline-coordinator.js";
 
 export function createTelemetryRoutes(
   store: TelemetryStore = telemetryStore,
@@ -52,6 +55,24 @@ export function createTelemetryRoutes(
 
             receivedAt:
               stored.receivedAt
+          });
+
+        await firelineAlertCoordinator
+          .handlePosition({
+            assetId:
+              stored.droneId,
+
+            resourceType:
+              "DRONE",
+
+            longitude:
+              stored.longitude,
+
+            latitude:
+              stored.latitude,
+
+            observedAt:
+              stored.timestamp
           });
       }
 

@@ -10,6 +10,9 @@ import { telemetryRoutes } from "./telemetry/routes.js";
 import { telemetryWebSocketRoutes } from "./telemetry/websocket.js";
 import { localDashboardRoutes, localHealth } from "./local-demo/routes.js";
 import {
+  internalFirelineRoutes
+} from "./alerts/routes.js";
+import {
   internalKpiRoutes,
   dashboardKpiRoutes
 } from "./kpi/routes.js";
@@ -69,6 +72,7 @@ app.route("/internal/v1", deviceRoutes);
 app.route("/internal/v1/telemetry", telemetryRoutes);
 app.route("/internal/v1/telemetry", telemetryWebSocketRoutes);
 app.route("/internal/v1/kpi", internalKpiRoutes);
+app.route("/internal/v1/alerts", internalFirelineRoutes);
 
 app.route(
   "/api/v1/dashboard",

@@ -6,6 +6,7 @@ import {
 
 import {
   FieldLinkStore,
+  type FieldLinkDeliveredAlert,
 } from "./store.js";
 
 function numberValue(
@@ -45,15 +46,83 @@ const dataFile =
     ?.trim() ||
   "./data/fieldlink-state.json";
 
+const kpiAckCallbackUrl =
+  process.env
+    .FIELDLINK_KPI_ACK_CALLBACK_URL
+    ?.trim() ||
+  "";
+
 const store =
   new FieldLinkStore(
     dataFile,
   );
 
+async function notifyCoreKpiAck(
+  alert:
+    FieldLinkDeliveredAlert,
+) {
+  if (!kpiAckCallbackUrl) {
+    return;
+  }
+
+  const response =
+    await fetch(
+      kpiAckCallbackUrl,
+      {
+        method:
+          "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+
+        body:
+          JSON.stringify({
+            sourceAlertId:
+              alert
+                .sourceAlertId,
+
+            deliveryId:
+              alert
+                .deliveryId,
+
+            acknowledgedAt:
+              new Date()
+                .toISOString(),
+
+            acknowledged:
+              alert
+                .acknowledged,
+          }),
+
+        signal:
+          AbortSignal.timeout(
+            1500,
+          ),
+      },
+    );
+
+  if (!response.ok) {
+    throw new Error(
+      `CORE_KPI_ACK_HTTP_${response.status}`,
+    );
+  }
+}
+
 const app =
-  createFieldLinkApp({
-    store,
-  });
+  createFieldLinkApp(
+    kpiAckCallbackUrl
+      ? {
+          store,
+
+          onAlertAcknowledged:
+            notifyCoreKpiAck,
+        }
+      : {
+          store,
+        },
+  );
 
 serve(
   {
@@ -80,6 +149,14 @@ serve(
         process.env
           .FIELDLINK_PIN
           ?.trim()
+          ? "ENABLED"
+          : "DISABLED"
+      }`,
+    );
+
+    console.log(
+      `[FieldLink] KPI ACK callback=${
+        kpiAckCallbackUrl
           ? "ENABLED"
           : "DISABLED"
       }`,

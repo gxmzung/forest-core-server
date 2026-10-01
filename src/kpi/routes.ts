@@ -264,6 +264,95 @@ internalKpiRoutes.patch(
 );
 
 internalKpiRoutes.post(
+  "/shares/ack",
+  async (c) => {
+    try {
+      const body =
+        await bodyOf(c);
+
+      const sourceAlertId =
+        String(
+          body.sourceAlertId ??
+          "",
+        ).trim();
+
+      if (!sourceAlertId) {
+        throw new Error(
+          "sourceAlertId is required",
+        );
+      }
+
+      const acknowledgedAt =
+        String(
+          body.acknowledgedAt ??
+          new Date()
+            .toISOString(),
+        );
+
+      if (
+        !Number.isFinite(
+          Date.parse(
+            acknowledgedAt,
+          ),
+        )
+      ) {
+        throw new Error(
+          "acknowledgedAt must be ISO-8601",
+        );
+      }
+
+      let updatedSessions =
+        0;
+
+      for (
+        const session of
+        requirementKpiEngine
+          .activeSessions()
+      ) {
+        try {
+          requirementKpiEngine
+            .recordShareResult(
+              session.sessionId,
+
+              sourceAlertId,
+
+              {
+                acknowledgedAt,
+              },
+            );
+
+          updatedSessions +=
+            1;
+        } catch (error) {
+          if (
+            error instanceof Error &&
+            error.message ===
+              "share attempt not found"
+          ) {
+            continue;
+          }
+
+          throw error;
+        }
+      }
+
+      return c.json({
+        data: {
+          sourceAlertId,
+          acknowledgedAt,
+          updatedSessions,
+        },
+      });
+    } catch (error) {
+      return errorResponse(
+        c,
+        error,
+      );
+    }
+  },
+);
+
+internalKpiRoutes.post(
   "/sessions/:sessionId/stop",
   async (c) => {
     try {

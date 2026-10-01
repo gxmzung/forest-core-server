@@ -3,11 +3,19 @@ import { cors } from "hono/cors";
 
 import {
   FieldLinkStore,
+  type FieldLinkDeliveredAlert,
 } from "./store.js";
 
 type Options = {
   pin?: string;
   store?: FieldLinkStore;
+
+  onAlertAcknowledged?: (
+    alert:
+      FieldLinkDeliveredAlert,
+  ) =>
+    Promise<void> |
+    void;
 };
 
 function numericLimit(
@@ -410,6 +418,27 @@ export function createFieldLinkApp(
             },
             404,
           );
+        }
+
+        if (
+          options
+            .onAlertAcknowledged
+        ) {
+          try {
+            await options
+              .onAlertAcknowledged(
+                alert,
+              );
+          } catch (error) {
+            console.warn(
+              "FIELDLINK_ACK_CALLBACK_FAILED",
+              error instanceof Error
+                ? error.message
+                : String(
+                    error,
+                  ),
+            );
+          }
         }
 
         return c.json(
