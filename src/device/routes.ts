@@ -3,6 +3,7 @@ import { resolveAssetMappings } from "../db/asset-mapping.js";
 import { collectDeviceIds, type ExternalVendor, type InvokeRequest, type MappingResult } from "../types.js";
 import { readVendorHealth } from "./health.js";
 import { invokeVendor } from "./integration.js";
+import { rememberLiveSleno } from "./live-sleno.js";
 
 export const deviceRoutes = new Hono();
 
@@ -20,6 +21,18 @@ deviceRoutes.post("/device-mappings/resolve", async (c) => {
 deviceRoutes.post("/vendor-messages", async (c) => {
   const body = await c.req.json<{ vendor?: unknown; request?: InvokeRequest; mappings?: MappingResult[]; normalized?: boolean; mode?: unknown; idempotencyKey?: string; defaultPayloadType?: string | null }>();
   if (!validVendor(body.vendor) || !body.request || !Array.isArray(body.mappings) || (body.mode !== "VALIDATE_ONLY" && body.mode !== "DELIVER")) return c.json({ error: { code: "INVALID_REQUEST", message: "메시지 요청이 올바르지 않습니다." } }, 400);
+  /*
+   * 실제 DELIVER 패킷은 DB 처리 전에 live cache에 먼저 보관한다.
+   * DB 지연/timeout 중에도 관제 위치 API가 실제 RTK 위치를 사용할 수 있다.
+   */
+  if (body.mode === "DELIVER") {
+    rememberLiveSleno(
+      body.vendor,
+      body.request,
+      body.mappings
+    );
+  }
+
   let mappings = body.mappings;
   if (!body.normalized) {
     const knownIds = new Set(mappings.map((item) => item.vendorDeviceId));
