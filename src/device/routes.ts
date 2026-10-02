@@ -3,6 +3,7 @@ import { resolveAssetMappings } from "../db/asset-mapping.js";
 import { collectDeviceIds, type ExternalVendor, type InvokeRequest, type MappingResult } from "../types.js";
 import { readVendorHealth } from "./health.js";
 import { invokeVendor } from "./integration.js";
+import { rememberLiveSleno } from "./live-sleno.js";
 
 export const deviceRoutes = new Hono();
 

@@ -3,6 +3,10 @@ import {
   type VendorIntegrationMessageRow
 } from "../db/vendor-messages.js";
 
+import {
+  readLiveSlenoRows
+} from "../device/live-sleno.js";
+
 type JsonRecord = Record<string, unknown>;
 type PositioningMethod = "GNSS" | "DGPS" | "RTK";
 
@@ -270,6 +274,13 @@ export function mapSlenoPositionRows(
         requestId:
           row.request_id,
 
+        /*
+         * LIVE_UNPERSISTED이면 실제 수신은 됐지만
+         * DB 저장 성공을 의미하지 않는다.
+         */
+        persistenceStatus:
+          row.status,
+
         networkType:
           textValue(
             data.networkType
@@ -374,13 +385,66 @@ export async function readSlenoDashboardTelemetry(
       listVendorMessages,
   nowMs = Date.now()
 ) {
+  /*
+   * JININFRA -> Core 요청이 들어온 순간 확보한
+   * 실제 RTK_POSITION을 최우선으로 사용한다.
+   *
+   * DB 장애/지연 중에도 지도 마커가
+   * 실제 수신 위치를 표시할 수 있다.
+   */
+  const liveRows =
+    readLiveSlenoRows();
+
+  const liveTelemetry =
+    mapSlenoPositionRows(
+      eventId,
+      liveRows,
+      nowMs
+    );
+
+  if (liveTelemetry.length > 0) {
+    return liveTelemetry;
+  }
+
+  /*
+   * Core 재시작 직후 아직 live packet이 없을 때만
+   * 기존 persisted DB 데이터를 조회한다.
+   *
+   * DB 장애가 관제 API 전체를 붙잡지 않도록
+   * 1.2초 상한을 둔다.
+   */
+  let timer:
+    ReturnType<typeof setTimeout>
+    | null = null;
+
   try {
     const rows =
-      await reader(
-        "JININFRA",
-        200,
-        "RTK_POSITION"
-      );
+      await Promise.race([
+        reader(
+          "JININFRA",
+          200,
+          "RTK_POSITION"
+        ),
+
+        new Promise<
+          VendorIntegrationMessageRow[]
+        >((_, reject) => {
+          timer =
+            setTimeout(
+              () =>
+                reject(
+                  new Error(
+                    "SLENO_DB_READ_TIMEOUT"
+                  )
+                ),
+              1200
+            );
+        })
+      ]);
+
+    if (timer) {
+      clearTimeout(timer);
+    }
 
     return mapSlenoPositionRows(
       eventId,
@@ -388,10 +452,10 @@ export async function readSlenoDashboardTelemetry(
       nowMs
     );
   } catch (error) {
-    /*
-     * Sleno DB 조회 실패가
-     * 기존 UAV 관제까지 죽이지 않게 한다.
-     */
+    if (timer) {
+      clearTimeout(timer);
+    }
+
     console.error(
       "[dashboard] Sleno telemetry read failed",
       error
