@@ -1,25 +1,30 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  clearLiveSlenoRows,
-  rememberLiveSleno,
-} from "../src/device/live-sleno.js";
-
-import {
-  readSlenoDashboardTelemetry,
-} from "../src/dashboard/sleno-telemetry.js";
+process.env.DB_MODE = "sqlite";
 
 test(
   "Sleno live RTK packet is exposed without waiting for DB persistence",
   async () => {
+    const {
+      clearLiveSlenoRows,
+      rememberLiveSleno,
+    } = await import(
+      "../src/device/live-sleno.js"
+    );
+
+    const {
+      readSlenoDashboardTelemetry,
+    } = await import(
+      "../src/dashboard/sleno-telemetry.js"
+    );
+
     clearLiveSlenoRows();
 
     rememberLiveSleno(
       "JININFRA",
       {
-        payloadType:
-          "RTK_POSITION",
+        payloadType: "RTK_POSITION",
 
         context: {
           eventExternalId:
@@ -47,8 +52,7 @@ test(
             toDeviceId:
               "SIM-RTK-BASE-01",
 
-            medium:
-              "LPWA",
+            medium: "LPWA",
 
             evidenceType:
               "OBSERVED",
@@ -58,28 +62,18 @@ test(
                 receivedAt:
                   "2026-10-02T15:35:24.221+09:00",
 
-                rssiDbm:
-                  -68,
-
-                snrDb:
-                  13,
-
-                selected:
-                  true,
+                rssiDbm: -68,
+                snrDb: 13,
+                selected: true,
               },
             ],
           },
         ],
 
         data: {
-          networkType:
-            "LORAWAN",
-
-          devEui:
-            "4652535256303031",
-
-          frameCounter:
-            43400,
+          networkType: "LORAWAN",
+          devEui: "4652535256303031",
+          frameCounter: 43400,
 
           latitude:
             37.42381865,
@@ -87,11 +81,8 @@ test(
           longitude:
             126.88741393,
 
-          altitude:
-            89.4,
-
-          fixType:
-            "DGPS",
+          altitude: 89.4,
+          fixType: "DGPS",
         },
       },
 
@@ -103,14 +94,9 @@ test(
           assetId:
             "20000000-0000-4000-8000-000000000004",
 
-          mapped:
-            true,
-
-          assetExists:
-            true,
-
-          mappingStatus:
-            "ACTIVE",
+          mapped: true,
+          assetExists: true,
+          mappingStatus: "ACTIVE",
         },
 
         {
@@ -120,34 +106,26 @@ test(
           assetId:
             "20000000-0000-4000-8000-000000000009",
 
-          mapped:
-            true,
-
-          assetExists:
-            true,
-
-          mappingStatus:
-            "ACTIVE",
+          mapped: true,
+          assetExists: true,
+          mappingStatus: "ACTIVE",
         },
       ],
     );
 
-    let databaseReaderCalled =
-      false;
+    let databaseReaderCalled = false;
 
     const result =
       await readSlenoDashboardTelemetry(
         "demo-wildfire-deoksungsan",
 
         async () => {
-          databaseReaderCalled =
-            true;
-
+          databaseReaderCalled = true;
           return [];
         },
 
         Date.parse(
-          "2026-10-02T15:35:25.221+09:00"
+          "2026-10-02T15:35:25.221+09:00",
         ),
       );
 
@@ -161,8 +139,7 @@ test(
       1,
     );
 
-    const marker =
-      result[0];
+    const marker = result[0];
 
     assert.ok(marker);
 
