@@ -8,7 +8,8 @@ type PositioningMethod = "GNSS" | "DGPS" | "RTK";
 
 type VendorMessageReader = (
   vendorCode: string,
-  limit?: number
+  limit?: number,
+  payloadType?: string
 ) => Promise<VendorIntegrationMessageRow[]>;
 
 function objectValue(value: unknown): JsonRecord {
@@ -377,7 +378,8 @@ export async function readSlenoDashboardTelemetry(
     const rows =
       await reader(
         "JININFRA",
-        2000
+        200,
+        "RTK_POSITION"
       );
 
     return mapSlenoPositionRows(
