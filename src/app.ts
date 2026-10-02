@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { config } from "./config.js";
 import { dashboardRoutes } from "./dashboard/routes.js";
 import { deviceRoutes } from "./device/routes.js";
 import { readCoreHealth } from "./device/health.js";
@@ -7,6 +8,7 @@ import { externalRoutes } from "./external/routes.js";
 import { videoRoutes } from "./video/routes.js";
 import { telemetryRoutes } from "./telemetry/routes.js";
 import { telemetryWebSocketRoutes } from "./telemetry/websocket.js";
+import { localDashboardRoutes, localHealth } from "./local-demo/routes.js";
 
 export const app = new Hono();
 
@@ -50,13 +52,25 @@ app.use(
 );
 
 app.get("/", (c) => c.json({ service: "forest-core-server", status: "ok" }));
-app.get("/health", async (c) => c.json({ data: await readCoreHealth() }));
+app.get("/health", async (c) =>
+  c.json({
+    data:
+      config.dbMode === "sqlite"
+        ? localHealth()
+        : await readCoreHealth(),
+  }),
+);
 
 app.route("/internal/v1", deviceRoutes);
 app.route("/internal/v1/telemetry", telemetryRoutes);
 app.route("/internal/v1/telemetry", telemetryWebSocketRoutes);
 
-app.route("/api/v1/dashboard", dashboardRoutes);
+app.route(
+  "/api/v1/dashboard",
+  config.dbMode === "sqlite"
+    ? localDashboardRoutes
+    : dashboardRoutes,
+);
 app.route("/api/v1/external", externalRoutes);
 app.route("/api/v1/assets", videoRoutes);
 
