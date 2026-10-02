@@ -24,21 +24,31 @@ export type VendorIntegrationMessageRow = {
 
 export async function listVendorMessages(
   vendorCode: string,
-  limit = 1000
+  limit = 1000,
+  payloadType?: string
 ): Promise<VendorIntegrationMessageRow[]> {
   const safeLimit =
     Number.isInteger(limit)
       ? Math.min(Math.max(limit, 1), 2000)
       : 1000;
 
-  const { data, error } = await supabase
+  let query = supabase
     .schema("core")
     .from("vendor_integration_message")
     .select(
       "request_id,event_external_id,payload_type,source_device_id,occurred_at,status,payload"
     )
     .eq("vendor_code", vendorCode)
-    .eq("status", "PERSISTED")
+    .eq("status", "PERSISTED");
+
+  if (payloadType) {
+    query = query.eq(
+      "payload_type",
+      payloadType
+    );
+  }
+
+  const { data, error } = await query
     .order("occurred_at", {
       ascending: false
     })
