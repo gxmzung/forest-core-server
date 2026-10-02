@@ -1,0 +1,400 @@
+import {
+  listVendorMessages,
+  type VendorIntegrationMessageRow
+} from "../db/vendor-messages.js";
+
+type JsonRecord = Record<string, unknown>;
+type PositioningMethod = "GNSS" | "DGPS" | "RTK";
+
+type VendorMessageReader = (
+  vendorCode: string,
+  limit?: number
+) => Promise<VendorIntegrationMessageRow[]>;
+
+function objectValue(value: unknown): JsonRecord {
+  return value &&
+    typeof value === "object" &&
+    !Array.isArray(value)
+    ? value as JsonRecord
+    : {};
+}
+
+function textValue(value: unknown): string | null {
+  if (
+    value === undefined ||
+    value === null ||
+    value === ""
+  ) return null;
+
+  return String(value);
+}
+
+function numberValue(value: unknown): number | null {
+  if (
+    value === undefined ||
+    value === null ||
+    value === ""
+  ) return null;
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed)
+    ? parsed
+    : null;
+}
+
+function latestSelectedObservation(
+  payload: JsonRecord
+): JsonRecord {
+  const activePath =
+    Array.isArray(payload.activePath)
+      ? payload.activePath
+      : [];
+
+  const observations: JsonRecord[] = [];
+
+  for (const rawHop of activePath) {
+    const hop = objectValue(rawHop);
+
+    const rows =
+      Array.isArray(hop.observations)
+        ? hop.observations
+        : [];
+
+    for (const row of rows) {
+      observations.push(
+        objectValue(row)
+      );
+    }
+  }
+
+  return (
+    observations.find(
+      (row) => row.selected === true
+    ) ??
+    observations[0] ??
+    {}
+  );
+}
+
+function positioningMethod(
+  fixType: string | null
+): PositioningMethod {
+  const normalized =
+    fixType?.trim().toUpperCase() ?? "";
+
+  if (normalized.includes("RTK")) {
+    return "RTK";
+  }
+
+  if (normalized.includes("DGPS")) {
+    return "DGPS";
+  }
+
+  return "GNSS";
+}
+
+export function mapSlenoPositionRows(
+  eventId: string,
+  rows: VendorIntegrationMessageRow[],
+  nowMs = Date.now()
+) {
+  const latestByAsset =
+    new Map<
+      string,
+      Record<string, unknown>
+    >();
+
+  for (const row of rows) {
+    const payload =
+      objectValue(row.payload);
+
+    const context =
+      objectValue(payload.context);
+
+    const payloadType =
+      textValue(
+        row.payload_type ??
+        payload.payloadType
+      );
+
+    if (
+      payloadType !== "RTK_POSITION" ||
+      context.sourceSystem !== "sleno-server"
+    ) {
+      continue;
+    }
+
+    const data =
+      objectValue(payload.data);
+
+    /*
+     * invokeVendor()에서 이미 실제
+     * asset UUID로 normalize 된 값.
+     */
+    const assetId =
+      textValue(
+        row.source_device_id ??
+        context.sourceDeviceId
+      );
+
+    const latitude =
+      numberValue(data.latitude);
+
+    const longitude =
+      numberValue(data.longitude);
+
+    const altitude =
+      numberValue(data.altitude);
+
+    const fixType =
+      textValue(data.fixType);
+
+    /*
+     * No-Fix / 0,0 좌표는
+     * 관제 마커에서 제외.
+     */
+    if (
+      !assetId ||
+      latitude === null ||
+      longitude === null ||
+      latitude < -90 ||
+      latitude > 90 ||
+      longitude < -180 ||
+      longitude > 180 ||
+      (
+        latitude === 0 &&
+        longitude === 0
+      ) ||
+      fixType
+        ?.trim()
+        .toUpperCase() ===
+        "FIX_NOT_AVAILABLE"
+    ) {
+      continue;
+    }
+
+    const observation =
+      latestSelectedObservation(
+        payload
+      );
+
+    const observedAt =
+      textValue(
+        observation.receivedAt ??
+        context.occurredAt ??
+        row.occurred_at
+      );
+
+    if (!observedAt) {
+      continue;
+    }
+
+    const observedMs =
+      Date.parse(observedAt);
+
+    if (!Number.isFinite(observedMs)) {
+      continue;
+    }
+
+    const firstPath =
+      Array.isArray(payload.activePath)
+        ? objectValue(
+            payload.activePath[0]
+          )
+        : {};
+
+    const freshnessSec =
+      Math.max(
+        0,
+        Math.floor(
+          (
+            nowMs -
+            observedMs
+          ) / 1000
+        )
+      );
+
+    const telemetry = {
+      eventId,
+
+      assetId,
+      sourceAssetId: assetId,
+
+      assetType:
+        "RTK_TERMINAL",
+
+      observedAt,
+
+      receivedAt:
+        row.occurred_at ||
+        observedAt,
+
+      latitude,
+      longitude,
+      altitude,
+
+      /*
+       * 과거 좌표를 ACTIVE라고
+       * 거짓 표시하지 않는다.
+       */
+      operationalStatus:
+        freshnessSec <= 60
+          ? "ACTIVE"
+          : freshnessSec <= 300
+            ? "STALE"
+            : "OFFLINE",
+
+      packetLossPct: null,
+
+      positioningMethod:
+        positioningMethod(
+          fixType
+        ),
+
+      attributes: {
+        telemetryPositionSource:
+          "JININFRA_RTK_POSITION",
+
+        sourceSystem:
+          "sleno-server",
+
+        vendor:
+          "JININFRA",
+
+        vendorEventExternalId:
+          row.event_external_id,
+
+        payloadType,
+
+        requestId:
+          row.request_id,
+
+        networkType:
+          textValue(
+            data.networkType
+          ),
+
+        devEui:
+          textValue(
+            data.devEui
+          ),
+
+        frameCounter:
+          numberValue(
+            data.frameCounter
+          ),
+
+        fixType,
+
+        freshnessSec,
+
+        pathEvidence: {
+          medium:
+            textValue(
+              firstPath.medium
+            ),
+
+          fromAssetId:
+            textValue(
+              firstPath.fromDeviceId
+            ),
+
+          toAssetId:
+            textValue(
+              firstPath.toDeviceId
+            ),
+
+          receivedAt:
+            textValue(
+              observation.receivedAt
+            )
+        },
+
+        linkQuality: {
+          rssiDbm:
+            numberValue(
+              observation.rssiDbm
+            ),
+
+          snrDb:
+            numberValue(
+              observation.snrDb
+            )
+        }
+      }
+    };
+
+    const current =
+      latestByAsset.get(
+        assetId
+      );
+
+    const currentObservedAt =
+      current
+        ? textValue(
+            current.observedAt
+          )
+        : null;
+
+    if (
+      !currentObservedAt ||
+      Date.parse(
+        currentObservedAt
+      ) < observedMs
+    ) {
+      latestByAsset.set(
+        assetId,
+        telemetry
+      );
+    }
+  }
+
+  return [
+    ...latestByAsset.values()
+  ].sort(
+    (a, b) =>
+      Date.parse(
+        textValue(
+          b.observedAt
+        ) ?? "0"
+      ) -
+      Date.parse(
+        textValue(
+          a.observedAt
+        ) ?? "0"
+      )
+  );
+}
+
+export async function readSlenoDashboardTelemetry(
+  eventId: string,
+  reader:
+    VendorMessageReader =
+      listVendorMessages,
+  nowMs = Date.now()
+) {
+  try {
+    const rows =
+      await reader(
+        "JININFRA",
+        2000
+      );
+
+    return mapSlenoPositionRows(
+      eventId,
+      rows,
+      nowMs
+    );
+  } catch (error) {
+    /*
+     * Sleno DB 조회 실패가
+     * 기존 UAV 관제까지 죽이지 않게 한다.
+     */
+    console.error(
+      "[dashboard] Sleno telemetry read failed",
+      error
+    );
+
+    return [];
+  }
+}

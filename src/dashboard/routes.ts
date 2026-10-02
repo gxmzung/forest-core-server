@@ -1,6 +1,7 @@
 import { Hono, type Context } from "hono";
 import { readAssetLogs } from "./asset-logs.js";
 import { readDashboardDroneTelemetry } from "./telemetry.js";
+import { readSlenoDashboardTelemetry } from "./sleno-telemetry.js";
 import { readSlenoNetworkQuality } from "./sleno-quality.js";
 import { parseDisasterId, readDisasterAssets } from "./assets.js";
 import { parseAssetId, readAsset, readAssets, readAssetTypes, registerAsset, registerVendorMapping, RegistryError } from "./registry.js";
@@ -98,8 +99,9 @@ dashboardRoutes.get(
   }
 );
 
-dashboardRoutes.get("/telemetry/drones", (c) => {
-  const eventId = c.req.query("eventId")?.trim();
+dashboardRoutes.get("/telemetry/drones", async (c) => {
+  const eventId =
+    c.req.query("eventId")?.trim();
 
   if (!eventId) {
     return c.json({
@@ -110,10 +112,24 @@ dashboardRoutes.get("/telemetry/drones", (c) => {
     }, 400);
   }
 
+  const droneRows =
+    readDashboardDroneTelemetry(
+      eventId
+    );
+
+  const slenoRows =
+    await readSlenoDashboardTelemetry(
+      eventId
+    );
+
   return c.json({
-    data: readDashboardDroneTelemetry(eventId)
+    data: [
+      ...droneRows,
+      ...slenoRows
+    ]
   });
 });
+
 dashboardRoutes.get("/disasters/:disasterId/assets", async (c) => {
   try {
     const disasterId = parseDisasterId(c.req.param("disasterId"));
