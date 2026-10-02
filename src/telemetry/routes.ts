@@ -5,6 +5,12 @@ import {
   telemetryStore,
   type TelemetryStore
 } from "./store.js";
+import {
+  requirementKpiEngine
+} from "../kpi/engine.js";
+import {
+  firelineAlertCoordinator
+} from "../alerts/fireline-coordinator.js";
 
 export function createTelemetryRoutes(
   store: TelemetryStore = telemetryStore,
@@ -38,6 +44,36 @@ export function createTelemetryRoutes(
 
       if (acceptedAsLatest) {
         hub.publish(stored);
+
+        requirementKpiEngine
+          .recordLocationUpdateForActiveSessions({
+            assetId:
+              stored.droneId,
+
+            observedAt:
+              stored.timestamp,
+
+            receivedAt:
+              stored.receivedAt
+          });
+
+        await firelineAlertCoordinator
+          .handlePosition({
+            assetId:
+              stored.droneId,
+
+            resourceType:
+              "DRONE",
+
+            longitude:
+              stored.longitude,
+
+            latitude:
+              stored.latitude,
+
+            observedAt:
+              stored.timestamp
+          });
       }
 
       return c.json({

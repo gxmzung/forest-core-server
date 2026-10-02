@@ -6,3 +6,5 @@ dist/
 data/*.sqlite
 data/*.sqlite-shm
 data/*.sqlite-wal
+data/fieldlink-state.json
+data/fieldlink-state.json.*
