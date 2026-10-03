@@ -23,6 +23,12 @@ import type {
   VendorIntegrationMessageRow,
 } from "../db/vendor-messages.js";
 
+import type {
+  ExternalVendor,
+  MappingResult,
+} from "../types.js";
+
+
 export const DEMO_UAV_ID =
   "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
@@ -1245,6 +1251,310 @@ export function slenoIdentities() {
       deviceType:
         optionalText(
           row.device_type,
+        ),
+    }),
+  );
+}
+
+
+export function resolveLocalAssetMappings(
+  vendor: ExternalVendor,
+  deviceIds: string[],
+  deviceTypes: Record<string, string> = {},
+): MappingResult[] {
+  const uniqueIds =
+    [...new Set(
+      deviceIds.filter(Boolean),
+    )];
+
+  return uniqueIds.map(
+    (vendorDeviceId): MappingResult => {
+      const row =
+        localDb()
+          .prepare(`
+            SELECT
+              asset_id,
+              mapping_status
+            FROM asset
+            WHERE vendor_code = ?
+              AND vendor_device_id = ?
+            LIMIT 1
+          `)
+          .get(
+            vendor,
+            vendorDeviceId,
+          ) as unknown as
+          | Row
+          | undefined;
+
+      if (row) {
+        const rawStatus =
+          optionalText(
+            row.mapping_status,
+          );
+
+        const mappingStatus:
+          MappingResult["mappingStatus"] =
+            rawStatus === "PENDING" ||
+            rawStatus === "SUSPENDED"
+              ? rawStatus
+              : "ACTIVE";
+
+        return {
+          vendorDeviceId,
+          assetId:
+            String(row.asset_id),
+          mapped: true,
+          assetExists: true,
+          mappingStatus,
+        };
+      }
+
+      /*
+       * 기존 Supabase 구현과 동일하게
+       * vendorDeviceId와 asset_code가 같은 경우
+       * 자동으로 mapping을 연결한다.
+       */
+      const asset =
+        localDb()
+          .prepare(`
+            SELECT asset_id
+            FROM asset
+            WHERE asset_code = ?
+            LIMIT 1
+          `)
+          .get(
+            vendorDeviceId,
+          ) as unknown as
+          | Row
+          | undefined;
+
+      if (asset) {
+        const assetId =
+          String(asset.asset_id);
+
+        localDb()
+          .prepare(`
+            UPDATE asset
+            SET
+              vendor_code = ?,
+              vendor_device_id = ?,
+              device_type = ?,
+              mapping_status = 'ACTIVE',
+              updated_at = ?
+            WHERE asset_id = ?
+          `)
+          .run(
+            vendor,
+            vendorDeviceId,
+            deviceTypes[
+              vendorDeviceId
+            ] ?? "OTHER",
+            new Date()
+              .toISOString(),
+            assetId,
+          );
+
+        return {
+          vendorDeviceId,
+          assetId,
+          mapped: true,
+          assetExists: true,
+          mappingStatus:
+            "ACTIVE",
+        };
+      }
+
+      return {
+        vendorDeviceId,
+        assetId: null,
+        mapped: false,
+        assetExists: false,
+        mappingStatus:
+          "UNMAPPED",
+      };
+    },
+  );
+}
+
+export function findLocalVendorMessage(
+  requestId: string,
+) {
+  const row =
+    localDb()
+      .prepare(`
+        SELECT
+          request_id,
+          vendor_code
+        FROM vendor_message
+        WHERE request_id = ?
+        LIMIT 1
+      `)
+      .get(
+        requestId,
+      ) as unknown as
+      | Row
+      | undefined;
+
+  if (!row) {
+    return null;
+  }
+
+  return {
+    request_id:
+      String(row.request_id),
+
+    vendor_code:
+      String(row.vendor_code),
+  };
+}
+
+export function insertLocalVendorMessage(
+  row: Record<string, unknown>,
+) {
+  const requestId =
+    requiredText(
+      row.request_id,
+      "request_id",
+    );
+
+  const vendorCode =
+    requiredText(
+      row.vendor_code,
+      "vendor_code",
+    );
+
+  const occurredAt =
+    requiredText(
+      row.occurred_at,
+      "occurred_at",
+    );
+
+  const payload =
+    row.payload &&
+    typeof row.payload === "object" &&
+    !Array.isArray(row.payload)
+      ? row.payload
+      : {};
+
+  localDb()
+    .prepare(`
+      INSERT INTO vendor_message (
+        request_id,
+        vendor_code,
+        event_external_id,
+        payload_type,
+        source_device_id,
+        occurred_at,
+        received_at,
+        status,
+        payload_json
+      )
+      VALUES (
+        ?, ?, ?, ?, ?, ?, ?, ?, ?
+      )
+    `)
+    .run(
+      requestId,
+      vendorCode,
+      optionalText(
+        row.event_external_id,
+      ),
+      optionalText(
+        row.payload_type,
+      ),
+      optionalText(
+        row.source_device_id,
+      ),
+      occurredAt,
+      new Date()
+        .toISOString(),
+      optionalText(
+        row.status,
+      ) ?? "PERSISTED",
+      JSON.stringify(payload),
+    );
+}
+
+export function listLocalVendorMessages(
+  vendorCode: string,
+  limit = 1000,
+  payloadType?: string,
+): VendorIntegrationMessageRow[] {
+  const safeLimit =
+    Number.isInteger(limit)
+      ? Math.min(
+          Math.max(limit, 1),
+          2000,
+        )
+      : 1000;
+
+  const rows =
+    payloadType
+      ? localDb()
+          .prepare(`
+            SELECT *
+            FROM vendor_message
+            WHERE vendor_code = ?
+              AND status = 'PERSISTED'
+              AND payload_type = ?
+            ORDER BY occurred_at DESC
+            LIMIT ?
+          `)
+          .all(
+            vendorCode,
+            payloadType,
+            safeLimit,
+          )
+      : localDb()
+          .prepare(`
+            SELECT *
+            FROM vendor_message
+            WHERE vendor_code = ?
+              AND status = 'PERSISTED'
+            ORDER BY occurred_at DESC
+            LIMIT ?
+          `)
+          .all(
+            vendorCode,
+            safeLimit,
+          );
+
+  return (
+    rows as unknown as Row[]
+  ).map(
+    (item) => ({
+      request_id:
+        String(
+          item.request_id,
+        ),
+
+      event_external_id:
+        optionalText(
+          item.event_external_id,
+        ),
+
+      payload_type:
+        optionalText(
+          item.payload_type,
+        ),
+
+      source_device_id:
+        optionalText(
+          item.source_device_id,
+        ),
+
+      occurred_at:
+        String(
+          item.occurred_at,
+        ),
+
+      status:
+        String(item.status),
+
+      payload:
+        jsonObject(
+          item.payload_json,
         ),
     }),
   );

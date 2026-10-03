@@ -21,24 +21,26 @@ deviceRoutes.post("/device-mappings/resolve", async (c) => {
 deviceRoutes.post("/vendor-messages", async (c) => {
   const body = await c.req.json<{ vendor?: unknown; request?: InvokeRequest; mappings?: MappingResult[]; normalized?: boolean; mode?: unknown; idempotencyKey?: string; defaultPayloadType?: string | null }>();
   if (!validVendor(body.vendor) || !body.request || !Array.isArray(body.mappings) || (body.mode !== "VALIDATE_ONLY" && body.mode !== "DELIVER")) return c.json({ error: { code: "INVALID_REQUEST", message: "메시지 요청이 올바르지 않습니다." } }, 400);
-  /*
-   * 실제 DELIVER 패킷은 DB 처리 전에 live cache에 먼저 보관한다.
-   * DB 지연/timeout 중에도 관제 위치 API가 실제 RTK 위치를 사용할 수 있다.
-   */
-  if (body.mode === "DELIVER") {
-    rememberLiveSleno(
-      body.vendor,
-      body.request,
-      body.mappings
-    );
-  }
-
   let mappings = body.mappings;
   if (!body.normalized) {
     const knownIds = new Set(mappings.map((item) => item.vendorDeviceId));
     const missingIds = [...collectDeviceIds(body.request)].filter((id) => !knownIds.has(id));
     if (missingIds.length) mappings = [...mappings, ...await resolveAssetMappings(body.vendor, missingIds)];
   }
+
+  /*
+   * mapping을 먼저 완료한 뒤 live cache에 기록한다.
+   * DB persistence await 전이므로 DB 지연 중에도 즉시 표시되며,
+   * vendor device ID 대신 실제 asset UUID를 사용할 수 있다.
+   */
+  if (body.mode === "DELIVER") {
+    rememberLiveSleno(
+      body.vendor,
+      body.request,
+      mappings
+    );
+  }
+
   return c.json({ data: await invokeVendor(body.vendor, body.request, mappings, body.mode, body.idempotencyKey, body.defaultPayloadType, body.normalized === true) });
 });
 

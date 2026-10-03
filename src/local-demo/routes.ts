@@ -12,6 +12,10 @@ import {
 } from "../dashboard/sleno-quality.js";
 
 import {
+  readSlenoDashboardTelemetry,
+} from "../dashboard/sleno-telemetry.js";
+
+import {
   DEMO_UAV_ID,
   LocalDbError,
   assetLogs,
@@ -285,10 +289,19 @@ localDashboardRoutes.get(
           ...quality,
 
           synthetic:
-            true as const,
+            quality
+              .physicalDeviceCount ===
+            0,
+
+          storageMode:
+            "SQLITE",
 
           demoMode:
-            "LOCAL_SQLITE",
+            quality
+              .physicalDeviceCount ===
+            0
+              ? "LOCAL_SQLITE"
+              : null,
         },
       });
     } catch (error) {
@@ -302,7 +315,7 @@ localDashboardRoutes.get(
 
 localDashboardRoutes.get(
   "/telemetry/drones",
-  (c) => {
+  async (c) => {
     const eventId =
       c.req.query(
         "eventId",
@@ -321,6 +334,19 @@ localDashboardRoutes.get(
         },
         400,
       );
+    }
+
+    const persistedSleno =
+      await readSlenoDashboardTelemetry(
+        eventId,
+      );
+
+    if (
+      persistedSleno.length > 0
+    ) {
+      return c.json({
+        data: persistedSleno,
+      });
     }
 
     const receivedAt =
