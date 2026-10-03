@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-process.env.DB_MODE = "sqlite";
+process.env.DB_MODE = "supabase";
+process.env.SUPABASE_URL =
+  "https://example.supabase.co";
+process.env.SUPABASE_SECRET_KEY =
+  "test-service-role-key";
 
 test(
   "HTTP DELIVER exposes live Sleno RTK marker while DB persistence is stalled",
