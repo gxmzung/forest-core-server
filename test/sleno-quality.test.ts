@@ -187,9 +187,19 @@ test(
       71.429
     );
 
+    /*
+     * duplicate frameCounter는
+     * 새로운 위치 갱신이 아니므로
+     * TC-02 갱신주기 계산에서 제외한다.
+     *
+     * 유효 frame 시각:
+     * 0s, 1s, 2s, 4s, 5s
+     * => intervals 1s, 1s, 2s, 1s
+     * => AVG 1.25s
+     */
     assert.equal(
       device.updateIntervalAvgMs,
-      1000
+      1250
     );
 
     assert.equal(

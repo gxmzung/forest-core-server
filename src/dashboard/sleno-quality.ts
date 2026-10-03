@@ -426,23 +426,65 @@ function deviceQuality(
     previous = current;
   }
 
+  /*
+   * TC-02 위치정보 갱신주기는
+   * 동일 frameCounter 재전송을
+   * 새로운 위치 갱신으로 계산하지 않는다.
+   *
+   * frameCounter가 제공되는 Sleno RTK는
+   * counter 변화 시점만 실제 신규 frame으로
+   * 간주한다.
+   */
+  const intervalRows:
+    SlenoSample[] = [];
+
+  let previousIntervalCounter:
+    number | null | undefined =
+      undefined;
+
+  for (const row of ordered) {
+    if (row.frameCounter == null) {
+      /*
+       * counter 자체가 없는 데이터셋은
+       * 기존 observedAt 기반 계산을 유지한다.
+       */
+      if (counters.length === 0) {
+        intervalRows.push(row);
+      }
+
+      continue;
+    }
+
+    if (
+      previousIntervalCounter ===
+        undefined ||
+      row.frameCounter !==
+        previousIntervalCounter
+    ) {
+      intervalRows.push(row);
+
+      previousIntervalCounter =
+        row.frameCounter;
+    }
+  }
+
   const intervals: number[] =
     [];
 
   for (
     let index = 1;
-    index < ordered.length;
+    index < intervalRows.length;
     index += 1
   ) {
     const previousAt =
       Date.parse(
-        ordered[index - 1]
+        intervalRows[index - 1]
           ?.observedAt ?? ""
       );
 
     const currentAt =
       Date.parse(
-        ordered[index]
+        intervalRows[index]
           ?.observedAt ?? ""
       );
 
@@ -853,7 +895,8 @@ export async function readSlenoNetworkQuality(
   ] = await Promise.all([
     listVendorMessages(
       "JININFRA",
-      limit
+      limit,
+      "RTK_POSITION"
     ),
 
     listRegisteredAssets(200)
