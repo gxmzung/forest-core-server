@@ -8,6 +8,10 @@ import {
 } from "hono";
 
 import {
+  config,
+} from "../config.js";
+
+import {
   calculateSlenoQuality,
 } from "../dashboard/sleno-quality.js";
 
@@ -289,6 +293,7 @@ localDashboardRoutes.get(
           ...quality,
 
           synthetic:
+            config.sqliteSeedDemo &&
             quality
               .physicalDeviceCount ===
             0,
@@ -297,6 +302,7 @@ localDashboardRoutes.get(
             "SQLITE",
 
           demoMode:
+            config.sqliteSeedDemo &&
             quality
               .physicalDeviceCount ===
             0
@@ -346,6 +352,14 @@ localDashboardRoutes.get(
     ) {
       return c.json({
         data: persistedSleno,
+      });
+    }
+
+    if (
+      !config.sqliteSeedDemo
+    ) {
+      return c.json({
+        data: [],
       });
     }
 
@@ -491,7 +505,7 @@ export function localHealth() {
       "sqlite",
 
     demoMode:
-      true,
+      config.sqliteSeedDemo,
 
     cloudFallback:
       false,
