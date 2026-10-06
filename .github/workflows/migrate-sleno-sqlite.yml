@@ -1,0 +1,175 @@
+name: Migrate physical Sleno to SQLite
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Migration mode
+        required: true
+        default: dry-run
+        type: choice
+        options:
+          - dry-run
+          - apply
+
+permissions:
+  contents: read
+
+concurrency:
+  group: forest-core-server-production
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run guarded Sleno migration on EC2
+        uses: appleboy/ssh-action@v1.2.5
+        env:
+          MIGRATION_MODE: ${{ inputs.mode }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: MIGRATION_MODE
+          script: |
+            set -Eeuo pipefail
+
+            REPO=/home/ubuntu/server/forest-core-server
+            DB="$REPO/data/forest.sqlite"
+            ASSET_ID=28d851ae-cc22-41c9-ab3e-55bc6fe2597b
+            ASSET_CODE=SLENO_Lab_SingleCH
+            ASSET_TYPE=RTK_BASE_LPWA_GATEWAY
+            SOURCE_CONTAINER=forest-core-migration-source
+            PROD_CONTAINER=forest-core-server
+            PROD_STOPPED=0
+            APPLY_ACTIVE=0
+            MIGRATION_VERIFIED=0
+            BACKUP=""
+
+            cd "$REPO"
+            test -f .env
+
+            case "$MIGRATION_MODE" in
+              dry-run|apply) ;;
+              *) echo "invalid migration mode"; exit 2 ;;
+            esac
+
+            git fetch origin main
+            git reset --hard origin/main
+
+            docker network inspect forest-backend >/dev/null
+            docker image inspect forest-core-server >/dev/null
+
+            cleanup() {
+              rc=$?
+
+              docker rm -f "$SOURCE_CONTAINER" >/dev/null 2>&1 || true
+
+              if [ "$rc" -ne 0 ] \
+                && [ "$APPLY_ACTIVE" = "1" ] \
+                && [ "$MIGRATION_VERIFIED" = "0" ] \
+                && [ -n "$BACKUP" ] \
+                && [ -f "$BACKUP" ]; then
+                docker stop "$PROD_CONTAINER" >/dev/null 2>&1 || true
+                cp -a "$BACKUP" "$DB"
+                echo "ROLLBACK: restored pre-migration SQLite backup"
+                PROD_STOPPED=1
+              fi
+
+              if [ "$PROD_STOPPED" = "1" ]; then
+                docker start "$PROD_CONTAINER" >/dev/null 2>&1 || true
+              fi
+
+              exit "$rc"
+            }
+            trap cleanup EXIT
+
+            # Current production API is already SQLite, so it cannot be used
+            # as the migration source. Start a temporary Supabase-backed Core
+            # from the existing EC2 .env without printing credentials.
+            docker rm -f "$SOURCE_CONTAINER" >/dev/null 2>&1 || true
+            docker run -d \
+              --name "$SOURCE_CONTAINER" \
+              --network forest-backend \
+              --env-file "$REPO/.env" \
+              -e DB_MODE=supabase \
+              -e PORT=18020 \
+              forest-core-server >/dev/null
+
+            SOURCE_OK=0
+            for attempt in $(seq 1 20); do
+              if docker exec "$SOURCE_CONTAINER" node -e \
+                "fetch('http://127.0.0.1:18020/health').then(r=>r.json()).then(j=>{if(j?.data?.database==='SUPABASE'&&j?.data?.databaseStatus==='REACHABLE')process.exit(0);process.exit(1)}).catch(()=>process.exit(1))"; then
+                SOURCE_OK=1
+                break
+              fi
+              sleep 2
+            done
+            test "$SOURCE_OK" = "1"
+
+            # Refuse to migrate if the preserved physical identity/mapping
+            # does not match the expected Sleno record.
+            docker exec "$SOURCE_CONTAINER" node -e \
+              "fetch('http://127.0.0.1:18020/api/v1/dashboard/assets/$ASSET_ID').then(async r=>{if(!r.ok)throw new Error('HTTP '+r.status);const j=await r.json();const a=j.data;if(a?.asset_id!=='$ASSET_ID'||a?.asset_code!=='$ASSET_CODE'||a?.asset_type?.name!=='$ASSET_TYPE')throw new Error('source identity mismatch');const m=(a.vendor_mappings||[]).filter(x=>x.vendor_code==='JININFRA');if(m.length!==1||m[0].vendor_device_id!=='$ASSET_CODE')throw new Error('source mapping mismatch');console.log(JSON.stringify({asset_id:a.asset_id,asset_code:a.asset_code,asset_type:a.asset_type?.name,vendor_code:m[0].vendor_code,vendor_device_id:m[0].vendor_device_id},null,2))}).catch(e=>{console.error(e);process.exit(1)})"
+
+            # Build only the existing build stage so tsx/dev dependencies are
+            # available to the one-shot migration script.
+            docker build \
+              --target build \
+              -f dockerfile \
+              -t forest-core-server:migration \
+              . >/dev/null
+
+            run_migration() {
+              APPLY_ARG="$1"
+
+              docker run --rm \
+                --network forest-backend \
+                -v "$REPO/scripts:/app/scripts:ro" \
+                -v "$REPO/src:/app/src:ro" \
+                -v "$REPO/data:/target" \
+                forest-core-server:migration \
+                sh -lc "npx tsx scripts/migrate-sleno-asset-to-sqlite.ts --source-base-url http://$SOURCE_CONTAINER:18020 --target /target/forest.sqlite $APPLY_ARG"
+            }
+
+            echo "===== DRY RUN ====="
+            run_migration ""
+
+            if [ "$MIGRATION_MODE" = "dry-run" ]; then
+              echo "DRY RUN COMPLETE - production SQLite was not modified."
+              exit 0
+            fi
+
+            echo "===== APPLY ====="
+            APPLY_ACTIVE=1
+
+            # Stop the SQLite writer before taking the backup and writing.
+            docker stop "$PROD_CONTAINER" >/dev/null
+            PROD_STOPPED=1
+
+            BACKUP="$DB.pre-sleno-migration.$(date -u +%Y%m%dT%H%M%SZ).bak"
+            cp -a "$DB" "$BACKUP"
+            echo "BACKUP created"
+
+            run_migration "--apply"
+
+            docker start "$PROD_CONTAINER" >/dev/null
+
+            PROD_OK=0
+            for attempt in $(seq 1 20); do
+              if docker exec "$PROD_CONTAINER" node -e \
+                "fetch('http://127.0.0.1:18020/health').then(r=>r.json()).then(j=>{if(j?.data?.database==='SQLITE'&&j?.data?.databaseStatus==='REACHABLE')process.exit(0);process.exit(1)}).catch(()=>process.exit(1))"; then
+                PROD_OK=1
+                break
+              fi
+              sleep 2
+            done
+            test "$PROD_OK" = "1"
+
+            docker exec "$PROD_CONTAINER" node -e \
+              "fetch('http://127.0.0.1:18020/api/v1/dashboard/assets/$ASSET_ID').then(async r=>{if(!r.ok)throw new Error('HTTP '+r.status);const j=await r.json();const a=j.data;if(a?.asset_id!=='$ASSET_ID'||a?.asset_code!=='$ASSET_CODE'||a?.asset_type?.name!=='$ASSET_TYPE')throw new Error('target identity mismatch');const m=(a.vendor_mappings||[]).filter(x=>x.vendor_code==='JININFRA');if(m.length!==1||m[0].vendor_device_id!=='$ASSET_CODE')throw new Error('target mapping mismatch');console.log(JSON.stringify({asset_id:a.asset_id,asset_code:a.asset_code,asset_type:a.asset_type?.name,vendor_code:m[0].vendor_code,vendor_device_id:m[0].vendor_device_id},null,2))}).catch(e=>{console.error(e);process.exit(1)})"
+
+            MIGRATION_VERIFIED=1
+            PROD_STOPPED=0
+            echo "MIGRATION APPLY COMPLETE"
