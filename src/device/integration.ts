@@ -11,6 +11,17 @@ function normalizeIds(value: unknown, ids: Map<string, string>, key?: string): u
   return value;
 }
 
+function isUniqueConstraintError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const code = "code" in error ? String(error.code) : "";
+  const errcode = "errcode" in error ? Number(error.errcode) : Number.NaN;
+  return code === "23505"
+    || code === "ERR_SQLITE_CONSTRAINT_PRIMARYKEY"
+    || code === "ERR_SQLITE_CONSTRAINT_UNIQUE"
+    || errcode === 1555
+    || errcode === 2067;
+}
+
 export async function invokeVendor(vendor: ExternalVendor, request: InvokeRequest, mappings: MappingResult[], deliveryMode: "VALIDATE_ONLY" | "DELIVER", requestIdHeader?: string, defaultPayloadType: string | null = null, alreadyNormalized = false) {
   const unmappedDeviceIds = mappings.filter((item) => !item.mapped).map((item) => item.vendorDeviceId);
   const idMap = mappingDictionary(mappings);
@@ -24,7 +35,17 @@ export async function invokeVendor(vendor: ExternalVendor, request: InvokeReques
       if (existing.vendor_code !== vendor) throw Object.assign(new Error("동일 Idempotency-Key가 다른 업체 요청에 사용되었습니다."), { code: "23505" });
       return { requestId, accepted: true, duplicate: true, mode: deliveryMode, mapping: { allMapped: true, mappedDevices: mappings, unmappedDeviceIds: [] }, normalizedPath, persisted: true, recordId: requestId, processedAt: new Date().toISOString() };
     }
-    await insertVendorMessage({ request_id: requestId, vendor_code: vendor, event_external_id: normalized.context.eventExternalId, payload_type: normalized.payloadType ?? defaultPayloadType, delivery_mode: deliveryMode, source_device_id: normalized.context.sourceDeviceId, reported_by_device_id: normalized.context.reportedByDeviceId ?? normalized.context.sourceDeviceId, occurred_at: normalized.context.occurredAt, status: "PERSISTED", payload: normalized });
+    try {
+      await insertVendorMessage({ request_id: requestId, vendor_code: vendor, event_external_id: normalized.context.eventExternalId, payload_type: normalized.payloadType ?? defaultPayloadType, delivery_mode: deliveryMode, source_device_id: normalized.context.sourceDeviceId, reported_by_device_id: normalized.context.reportedByDeviceId ?? normalized.context.sourceDeviceId, occurred_at: normalized.context.occurredAt, status: "PERSISTED", payload: normalized });
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) throw error;
+
+      const raced = await findVendorMessage(requestId);
+      if (!raced) throw error;
+      if (raced.vendor_code !== vendor) throw Object.assign(new Error("동일 Idempotency-Key가 다른 업체 요청에 사용되었습니다."), { code: "23505" });
+
+      return { requestId, accepted: true, duplicate: true, mode: deliveryMode, mapping: { allMapped: true, mappedDevices: mappings, unmappedDeviceIds: [] }, normalizedPath, persisted: true, recordId: requestId, processedAt: new Date().toISOString() };
+    }
   }
   return { requestId, accepted: true, duplicate: false, mode: deliveryMode, mapping: { allMapped: true, mappedDevices: mappings, unmappedDeviceIds: [] }, normalizedPath, persisted: deliveryMode === "DELIVER", recordId: deliveryMode === "DELIVER" ? requestId : null, processedAt: new Date().toISOString() };
 }
