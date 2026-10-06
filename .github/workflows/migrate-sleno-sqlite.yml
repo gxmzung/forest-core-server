@@ -11,6 +11,11 @@ on:
         options:
           - dry-run
           - apply
+      confirm_asset_id:
+        description: For apply, type the physical Sleno asset UUID exactly
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -22,16 +27,18 @@ concurrency:
 jobs:
   migrate:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Run guarded Sleno migration on EC2
         uses: appleboy/ssh-action@v1.2.5
         env:
           MIGRATION_MODE: ${{ inputs.mode }}
+          CONFIRM_ASSET_ID: ${{ inputs.confirm_asset_id }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: MIGRATION_MODE
+          envs: MIGRATION_MODE,CONFIRM_ASSET_ID
           script: |
             set -Eeuo pipefail
 
@@ -54,6 +61,12 @@ jobs:
               dry-run|apply) ;;
               *) echo "invalid migration mode"; exit 2 ;;
             esac
+
+            if [ "$MIGRATION_MODE" = "apply" ] \
+              && [ "$CONFIRM_ASSET_ID" != "$ASSET_ID" ]; then
+              echo "REFUSING APPLY: confirm_asset_id must exactly match the physical Sleno asset UUID."
+              exit 2
+            fi
 
             git fetch origin main
             git reset --hard origin/main
