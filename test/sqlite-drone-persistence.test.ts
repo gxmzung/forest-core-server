@@ -129,6 +129,53 @@ test(
       assetsBody.data,
       [],
     );
+
+    const quality =
+      await app.request(
+        "http://localhost/api/v1/dashboard/network-quality/sleno?limit=10",
+      );
+
+    assert.equal(
+      quality.status,
+      200,
+    );
+
+    const qualityBody =
+      await quality.json() as {
+        data: {
+          synthetic:
+            boolean;
+
+          storageMode:
+            string;
+
+          demoMode:
+            string | null;
+
+          deviceCount:
+            number;
+        };
+      };
+
+    assert.equal(
+      qualityBody.data.synthetic,
+      false,
+    );
+
+    assert.equal(
+      qualityBody.data.storageMode,
+      "SQLITE",
+    );
+
+    assert.equal(
+      qualityBody.data.demoMode,
+      null,
+    );
+
+    assert.equal(
+      qualityBody.data.deviceCount,
+      0,
+    );
   },
 );
 

@@ -293,6 +293,7 @@ localDashboardRoutes.get(
           ...quality,
 
           synthetic:
+            config.sqliteSeedDemo &&
             quality
               .physicalDeviceCount ===
             0,
@@ -301,6 +302,7 @@ localDashboardRoutes.get(
             "SQLITE",
 
           demoMode:
+            config.sqliteSeedDemo &&
             quality
               .physicalDeviceCount ===
             0
