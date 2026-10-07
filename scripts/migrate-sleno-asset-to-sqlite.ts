@@ -276,6 +276,45 @@ if (
   );
 }
 
+/*
+ * Dashboard source implementations may expose
+ * asset_type either as a string identifier or
+ * as an expanded asset-type object.
+ *
+ * Normalize both representations before writing
+ * to SQLite so migration does not bind undefined.
+ */
+const sourceAssetType =
+  asset.asset_type;
+
+const normalizedAssetType =
+  typeof sourceAssetType === "string"
+    ? {
+        asset_type_id:
+          sourceAssetType,
+
+        name:
+          sourceAssetType,
+
+        description:
+          null,
+
+        enabled:
+          true,
+      }
+    : sourceAssetType;
+
+if (
+  !normalizedAssetType ||
+  typeof normalizedAssetType.asset_type_id !==
+    "string" ||
+  normalizedAssetType.asset_type_id.trim() === ""
+) {
+  throw new Error(
+    "source asset_type is missing or invalid",
+  );
+}
+
 const plan = {
   mode:
     apply
@@ -321,7 +360,7 @@ const plan = {
   },
 
   assetType:
-    asset.asset_type,
+    normalizedAssetType,
 
   mapping,
 };
@@ -486,17 +525,17 @@ try {
       description = excluded.description,
       enabled = excluded.enabled
   `).run(
-    asset.asset_type
+    normalizedAssetType
       .asset_type_id,
 
-    asset.asset_type.name,
+    normalizedAssetType.name,
 
-    asset.asset_type
-      .description,
+    normalizedAssetType
+      .description ?? null,
 
-    asset.asset_type.enabled
-      ? 1
-      : 0,
+    normalizedAssetType.enabled === false
+      ? 0
+      : 1,
   );
 
   db.prepare(`
@@ -564,7 +603,7 @@ try {
   `).run(
     asset.asset_id,
 
-    asset.asset_type
+    normalizedAssetType
       .asset_type_id,
 
     asset.asset_code,
