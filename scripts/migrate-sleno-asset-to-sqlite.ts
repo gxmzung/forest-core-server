@@ -99,6 +99,52 @@ async function get<T>(
   return (await response.json()) as T;
 }
 
+const usage = `Usage:
+  npx tsx scripts/migrate-sleno-asset-to-sqlite.ts [options]
+
+Options:
+  --source-base-url <url>  Source Core API base URL
+  --asset-code <code>      Physical Sleno asset code
+  --target <path>          Target SQLite database path
+  --apply                  Apply migration (default is dry-run)
+  --help                   Show this help
+`;
+
+const knownOptions = new Set([
+  "--source-base-url",
+  "--asset-code",
+  "--target",
+  "--apply",
+  "--help",
+]);
+
+for (let index = 2; index < process.argv.length; index += 1) {
+  const value = process.argv[index];
+
+  if (!value.startsWith("--")) {
+    continue;
+  }
+
+  if (!knownOptions.has(value)) {
+    throw new Error(
+      `Unknown option: ${value}`,
+    );
+  }
+
+  if (
+    value === "--source-base-url" ||
+    value === "--asset-code" ||
+    value === "--target"
+  ) {
+    index += 1;
+  }
+}
+
+if (process.argv.includes("--help")) {
+  console.log(usage);
+  process.exit(0);
+}
+
 const apply =
   process.argv.includes(
     "--apply",
