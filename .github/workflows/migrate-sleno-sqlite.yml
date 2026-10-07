@@ -143,8 +143,6 @@ jobs:
               echo "ERROR: temporary Supabase source did not become healthy."
               echo "===== SOURCE CONTAINER DIAGNOSTICS ====="
               docker inspect -f 'status={{.State.Status}} exit_code={{.State.ExitCode}} oom={{.State.OOMKilled}} error={{.State.Error}}' "$SOURCE_CONTAINER" 2>/dev/null || true
-              echo "===== SOURCE CONTAINER LOGS (last 120 lines) ====="
-              docker logs --tail 120 "$SOURCE_CONTAINER" 2>&1 || true
               exit 1
             fi
 
