@@ -110,16 +110,43 @@ jobs:
               -e PORT=18020 \
               forest-core-server >/dev/null
 
+            echo "===== SOURCE HEALTH CHECK ====="
             SOURCE_OK=0
             for attempt in $(seq 1 20); do
-              if docker exec "$SOURCE_CONTAINER" node -e \
-                "fetch('http://127.0.0.1:18020/health').then(r=>r.json()).then(j=>{if(j?.data?.database==='SUPABASE'&&j?.data?.databaseStatus==='REACHABLE')process.exit(0);process.exit(1)}).catch(()=>process.exit(1))"; then
-                SOURCE_OK=1
+              echo "source health attempt $attempt/20"
+
+              if ! docker inspect "$SOURCE_CONTAINER" >/dev/null 2>&1; then
+                echo "ERROR: source container disappeared"
                 break
               fi
+
+              SOURCE_STATE="$(docker inspect -f '{{.State.Status}}' "$SOURCE_CONTAINER" 2>/dev/null || true)"
+              SOURCE_EXIT="$(docker inspect -f '{{.State.ExitCode}}' "$SOURCE_CONTAINER" 2>/dev/null || true)"
+              echo "source container state=$SOURCE_STATE exit_code=$SOURCE_EXIT"
+
+              if [ "$SOURCE_STATE" != "running" ]; then
+                echo "ERROR: source container is not running"
+                break
+              fi
+
+              if docker exec "$SOURCE_CONTAINER" node -e \
+                "fetch('http://127.0.0.1:18020/health').then(async r=>{const t=await r.text();let j;try{j=JSON.parse(t)}catch{};console.log('health http='+r.status+' database='+(j?.data?.database??'unknown')+' status='+(j?.data?.databaseStatus??'unknown'));if(r.ok&&j?.data?.database==='SUPABASE'&&j?.data?.databaseStatus==='REACHABLE')process.exit(0);process.exit(1)}).catch(e=>{console.error('health request failed: '+e.message);process.exit(1)})"; then
+                SOURCE_OK=1
+                echo "SOURCE HEALTH OK"
+                break
+              fi
+
               sleep 2
             done
-            test "$SOURCE_OK" = "1"
+
+            if [ "$SOURCE_OK" != "1" ]; then
+              echo "ERROR: temporary Supabase source did not become healthy."
+              echo "===== SOURCE CONTAINER DIAGNOSTICS ====="
+              docker inspect -f 'status={{.State.Status}} exit_code={{.State.ExitCode}} oom={{.State.OOMKilled}} error={{.State.Error}}' "$SOURCE_CONTAINER" 2>/dev/null || true
+              echo "===== SOURCE CONTAINER LOGS (last 120 lines) ====="
+              docker logs --tail 120 "$SOURCE_CONTAINER" 2>&1 || true
+              exit 1
+            fi
 
             # Refuse to migrate if the preserved physical identity/mapping
             # does not match the expected Sleno record.
