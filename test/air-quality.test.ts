@@ -65,3 +65,25 @@ test("산불위험 원자료의 빈 수치를 0으로 만들지 않는다", asyn
     assert.equal(value.data[0]?.mean, null); assert.equal(value.data[0]?.min, 0); assert.equal(value.data[0]?.max, null);
   } finally { globalThis.fetch = original; }
 });
+
+
+test("상위 401을 측정소정보와 대기오염정보 단계로 구분하고 키를 노출하지 않는다", async () => {
+  clearExternalCache();
+  await assert.rejects(fetchAirQuality(36.37, 127.33, { serviceKey: "stage-secret-a", fetcher: async () => new Response("unauthorized", { status: 401 }) }), (error: unknown) => {
+    assert.ok(error instanceof Error);
+    assert.equal((error as Error & { code: string }).code, "AIR_STATION_AUTH_FAILED");
+    assert.ok(error.message.includes("측정소정보 HTTP 401"));
+    assert.ok(!error.message.includes("stage-secret-a")); return true;
+  });
+  clearExternalCache();
+  await assert.rejects(fetchAirQuality(36.37, 127.33, { serviceKey: "stage-secret-b", fetcher: async (input) => {
+    if (new URL(String(input)).pathname.endsWith("getMsrstnList")) return Response.json(envelope(stations));
+    return new Response("unauthorized", { status: 401 });
+  } }), (error: unknown) => {
+    assert.ok(error instanceof Error);
+    assert.equal((error as Error & { code: string }).code, "AIR_OBSERVATION_AUTH_FAILED");
+    assert.ok(error.message.includes("대기오염정보 HTTP 401"));
+    assert.ok(!error.message.includes("stage-secret-b")); return true;
+  });
+  clearExternalCache();
+});
