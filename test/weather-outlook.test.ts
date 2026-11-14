@@ -141,3 +141,28 @@ test("실제 HTTP 경로는 실황·예보·특보를 각각 정규화하고 반
     if (originalWarningKey === undefined) delete process.env.KMA_WARNING_SERVICE_KEY; else process.env.KMA_WARNING_SERVICE_KEY = originalWarningKey;
   }
 });
+
+test("예보의 숫자 날짜·시간과 생략된 앞자리 0을 정규화하고 격자 검증은 유지한다", () => {
+  const rows = [{ baseDate: 20261114, baseTime: 30, fcstDate: 20261114, fcstTime: 100, nx: 60, ny: 127, category: "WSD", fcstValue: "1.2" }];
+  const result = parseForecast(payload(rows), grid, { date: "20261114", time: "0030" }, new Date("2026-11-14T00:45:00+09:00"));
+  assert.equal(result.issuedAt, "2026-11-14T00:30:00+09:00");
+  assert.equal(result.periods[0]?.validAt, "2026-11-14T01:00:00+09:00");
+  assert.equal(result.periods[0]?.windSpeedMps, 1.2);
+  assert.throws(() => parseForecast(payload(rows), { nx: 54, ny: 108 }, { date: "20261114", time: "0030" }, now), (error: unknown) => {
+    assert.ok(error instanceof Error);
+    assert.ok(error.message.includes('"requested"'));
+    assert.ok(error.message.includes('"returned"'));
+    return true;
+  });
+});
+test("예보 진단은 숫자 기준정보만 출력하고 원문·키를 노출하지 않는다", () => {
+  assert.throws(() => parseForecast(payload([{ baseDate: "secret-key", baseTime: "https://secret.example", nx: "sensitive", ny: 108 }]), grid, base, now), (error: unknown) => {
+    assert.ok(error instanceof Error);
+    assert.ok(!error.message.includes("secret")); assert.ok(!error.message.includes("sensitive")); return true;
+  });
+});
+test("기상청 특보 403과 예보 403의 이용 권한 오류를 구분한다", async () => {
+  const fetcher: typeof fetch = async () => new Response("forbidden", { status: 403 });
+  await assert.rejects(fetchWarnings({ serviceKey: "x", fetcher }), { code: "KMA_WARNING_ACCESS_DENIED" });
+  await assert.rejects(fetchForecast(grid, { serviceKey: "x", fetcher, now }), { code: "KMA_FORECAST_ACCESS_DENIED" });
+});
