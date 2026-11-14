@@ -166,3 +166,15 @@ test("기상청 특보 403과 예보 403의 이용 권한 오류를 구분한다
   await assert.rejects(fetchWarnings({ serviceKey: "x", fetcher }), { code: "KMA_WARNING_ACCESS_DENIED" });
   await assert.rejects(fetchForecast(grid, { serviceKey: "x", fetcher, now }), { code: "KMA_FORECAST_ACCESS_DENIED" });
 });
+
+
+test("실수신된 같은 시각 00분 기준 예보를 수용하되 실제 발표시각과 격자를 보존한다", () => {
+  const rows = forecastFixture().map((row) => ({ ...row, baseTime: "1300" }));
+  const value = parseForecast(payload(rows), grid, base, now);
+  assert.equal(value.issuedAt, "2026-11-14T13:00:00+09:00");
+  assert.equal(value.periods[0]?.windSpeedMps, 0);
+  assert.throws(() => parseForecast(payload(rows), { nx: 54, ny: 108 }, base, now), { code: "INVALID_RESPONSE" });
+  assert.throws(() => parseForecast(payload(rows.map((row) => ({ ...row, baseTime: "1200" }))), grid, base, now), { code: "INVALID_RESPONSE" });
+  assert.throws(() => parseForecast(payload(rows.map((row) => ({ ...row, baseDate: "20261113" }))), grid, base, now), { code: "INVALID_RESPONSE" });
+  assert.throws(() => parseForecast(payload([...rows, { ...rows[0], baseTime: "1200" }]), grid, base, now), { code: "INVALID_RESPONSE" });
+});

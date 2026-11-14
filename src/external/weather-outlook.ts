@@ -49,7 +49,15 @@ function digits(raw: unknown, width: number): string | null {
 
 export function parseForecast(payload: unknown, grid: Grid, base: Base, now: Date): WeatherForecast {
   const records = items(payload);
-  const matching = records.filter((item) => digits(item.baseDate, 8) === base.date && digits(item.baseTime, 4) === base.time && Number(item.nx) === grid.nx && Number(item.ny) === grid.ny);
+  const matches = (item: Record<string, unknown>, time: string) => digits(item.baseDate, 8) === base.date && digits(item.baseTime, 4) === time && Number(item.nx) === grid.nx && Number(item.ny) === grid.ny;
+  let matching = records.filter((item) => matches(item, base.time));
+  let issuedTime = base.time;
+  // 사용자 실수신: 15:30 요청에 같은 날짜·격자의 15:00 기준 예보 반환.
+  // 동일 시간대의 00분 자료로 전체 응답이 일치할 때만 허용하고 실제 기준시각을 보존한다.
+  if (!matching.length && base.time.endsWith("30")) {
+    const hourTime = `${base.time.slice(0, 2)}00`;
+    if (records.every((item) => matches(item, hourTime))) { matching = records; issuedTime = hourTime; }
+  }
   if (!matching.length) {
     // 공개 격자·발표시각만 허용 목록으로 출력한다. 원문 payload·키·요청 URL은 포함하지 않는다.
     const returned = records.slice(0, 2).map((item) => ({ baseDate: digits(item.baseDate, 8), baseTime: digits(item.baseTime, 4), nx: numeric(item.nx, 1, 149), ny: numeric(item.ny, 1, 253) }));
@@ -67,7 +75,7 @@ export function parseForecast(payload: unknown, grid: Grid, base: Base, now: Dat
     validAt, temperatureC: numeric(row.T1H, -90, 60), humidityPct: numeric(row.REH, 0, 100), windSpeedMps: numeric(row.WSD, 0, 150), windDirectionDeg: numeric(row.VEC, 0, 360), precipitationType: rainType(row.PTY), precipitationText: rainText(row.RN1),
   })).filter((row) => Object.entries(row).some(([key, value]) => key !== "validAt" && value !== null)).slice(0, 6);
   if (!periods.length) throw new WeatherError("NO_DATA", "표시 가능한 향후 예보가 없습니다.");
-  return { issuedAt: kmaTime(base.date, base.time), grid, periods };
+  return { issuedAt: kmaTime(base.date, issuedTime), grid, periods };
 }
 
 async function request(url: URL, options: Options) {
