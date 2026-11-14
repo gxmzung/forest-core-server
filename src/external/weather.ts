@@ -33,6 +33,8 @@ export type WeatherObservation = {
   humidityPct: number | null;
   windSpeedMps: number | null;
   windDirectionDeg: number | null;
+  precipitation1hMm: number | null;
+  precipitationType: number | null;
   grid: { nx: number; ny: number };
 };
 
@@ -49,11 +51,12 @@ export function parseWeather(payload: unknown, grid: { nx: number; ny: number },
   if (!matching.length) throw new WeatherError("INVALID_RESPONSE", "요청 시각·격자와 다른 기상 자료입니다.");
   const read = (category: string, min: number, max: number) => {
     const raw = matching.find((item) => item.category === category)?.obsrValue;
-    if (raw == null || String(raw).trim() === "") return null;
+    if (raw == null || !["number", "string"].includes(typeof raw) || String(raw).trim() === "") return null;
     const value = Number(raw);
     return Number.isFinite(value) && value >= min && value <= max ? value : null;
   };
-  const values = { temperatureC: read("T1H", -90, 60), humidityPct: read("REH", 0, 100), windSpeedMps: read("WSD", 0, 150), windDirectionDeg: read("VEC", 0, 360) };
+  const values = { temperatureC: read("T1H", -90, 60), humidityPct: read("REH", 0, 100), windSpeedMps: read("WSD", 0, 150), windDirectionDeg: read("VEC", 0, 360), precipitation1hMm: read("RN1", 0, 2000), precipitationType: read("PTY", 0, 7) };
+  if (values.precipitationType !== null && ![0, 1, 2, 3, 5, 6, 7].includes(values.precipitationType)) values.precipitationType = null;
   if (Object.values(values).every((value) => value === null)) throw new WeatherError("NO_DATA", "유효한 기상 관측값이 없습니다.");
   return { ...values, observedAt: `${base.date.slice(0, 4)}-${base.date.slice(4, 6)}-${base.date.slice(6, 8)}T${base.time.slice(0, 2)}:00:00+09:00`, grid };
 }
