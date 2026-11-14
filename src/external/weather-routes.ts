@@ -4,6 +4,9 @@ import { fetchWeather, WeatherError, weatherGrid } from "./weather.js";
 
 import { fetchForecast, fetchWarnings } from "./weather-outlook.js";
 
+import { fetchAirQuality } from "./air-quality.js";
+import { fetchWildfireRisk } from "./wildfire-risk.js";
+
 export const weatherRoutes = new Hono();
 
 weatherRoutes.get("/weather", async (c) => {
@@ -47,6 +50,34 @@ weatherRoutes.get("/weather/warnings", async (c) => {
     return c.json({ data: result.value, meta: { source: "KMA_WARNING", provider: "기상청 특보현황", stale: false, cache: result.cache, servedAt: new Date().toISOString(), note: "전국 현황 원문입니다. 현장 좌표별 특보 판정이 아니며 전광판 현장 경보로 자동 전송하지 않습니다." } });
   } catch (error) {
     const failure = error instanceof WeatherError ? error : new WeatherError("WEATHER_UNAVAILABLE", "기상특보를 불러오지 못했습니다.");
+    return c.json({ error: { code: failure.code, message: failure.message } }, failure.status);
+  }
+});
+
+
+// DB 없이 실행되는 로컬 공공데이터 경로. 기존 운영 연계 경로는 유지한다.
+weatherRoutes.get("/environment/air-quality", async (c) => {
+  try {
+    const latitude = Number(c.req.query("latitude") ?? NaN), longitude = Number(c.req.query("longitude") ?? NaN);
+    weatherGrid(latitude, longitude);
+    const key = process.env.AIRKOREA_SERVICE_KEY?.trim() || "";
+    const result = await fetchAirQuality(latitude, longitude, { serviceKey: key });
+    return c.json({ data: result.data, meta: { source: "AIRKOREA", stale: result.stale, servedAt: new Date().toISOString(), note: "좌표 확인된 인근 측정소 관측값입니다. 현장 연기·유해가스 직접 측정값이 아닙니다." } });
+  } catch (error) {
+    const failure = error instanceof WeatherError ? error : new WeatherError("PROVIDER_UNAVAILABLE", "대기질 자료를 받지 못했습니다.");
+    return c.json({ error: { code: failure.code, message: failure.message } }, failure.status);
+  }
+});
+weatherRoutes.get("/environment/wildfire-risk", async (c) => {
+  try {
+    const key = process.env.KFS_WILDFIRE_SERVICE_KEY?.trim() || "";
+    if (!key) throw new WeatherError("NOT_CONFIGURED", "산림청 산불위험예보 인증키 서버 설정이 필요합니다.", 503);
+    const pageNo = Number(c.req.query("pageNo") ?? 1);
+    if (!Number.isInteger(pageNo) || pageNo < 1 || pageNo > 100) throw new WeatherError("INVALID_PAGE", "페이지 범위를 확인하세요.", 400);
+    const result = await cachedExternal(`environment-wildfire:${pageNo}`, () => fetchWildfireRisk({ serviceKey: key, baseUrl: "https://apis.data.go.kr/1400377/forestPointV2", pageNo, numOfRows: 300, excludeForecast: true }), { ttlMs: 300_000, staleIfErrorMs: 900_000 });
+    return c.json({ data: result.value.data, meta: { ...result.value.meta, source: "KFS_WILDFIRE", stale: result.cache === "STALE", servedAt: new Date().toISOString() } });
+  } catch (error) {
+    const failure = error instanceof WeatherError ? error : new WeatherError("PROVIDER_UNAVAILABLE", "산림청 산불위험예보 수신 실패 · 활용신청·인증키·연결을 확인하세요.");
     return c.json({ error: { code: failure.code, message: failure.message } }, failure.status);
   }
 });

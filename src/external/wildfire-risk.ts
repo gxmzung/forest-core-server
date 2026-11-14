@@ -3,18 +3,18 @@ import { fetchWithTimeout } from "./fetch-with-timeout.js";
 export interface WildfireRiskRecord {
   analyzedAt: string;
   area: string;
-  d1: number;
-  d2: number;
-  d3: number;
-  d4: number;
+  d1: number | null;
+  d2: number | null;
+  d3: number | null;
+  d4: number | null;
   province: string;
   district: string;
-  max: number;
-  mean: number;
-  min: number;
+  max: number | null;
+  mean: number | null;
+  min: number | null;
   regionCode: string;
   sigunguCode: string;
-  standardDeviation: number;
+  standardDeviation: number | null;
   upperLocalCode: string;
 }
 
@@ -33,9 +33,11 @@ function repairUtf8Mojibake(value: string): string {
   }
 }
 
-function getNumber(xml: string, tag: string): number {
-  const value = Number(getTag(xml, tag).replace(/,/g, ""));
-  return Number.isFinite(value) ? value : 0;
+function getNumber(xml: string, tag: string): number | null {
+  const raw = getTag(xml, tag).replace(/,/g, "");
+  if (!raw) return null;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 ? value : null;
 }
 
 export async function fetchWildfireRisk(params: {
@@ -43,14 +45,17 @@ export async function fetchWildfireRisk(params: {
   baseUrl: string;
   pageNo?: number;
   numOfRows?: number;
+  excludeForecast?: boolean;
 }) {
   if (!params.serviceKey) {
     throw new Error("KFS_WILDFIRE_SERVICE_KEY is not configured");
   }
 
   const query = new URLSearchParams({
-    serviceKey: params.serviceKey,
+    serviceKey: (() => { try { return decodeURIComponent(params.serviceKey); } catch { return params.serviceKey; } })(),
     pageNo: String(params.pageNo ?? 1),
+    _type: "xml",
+    excludeForecast: params.excludeForecast ? "1" : "0",
     numOfRows: String(params.numOfRows ?? 230),
   });
 
