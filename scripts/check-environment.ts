@@ -11,7 +11,10 @@ else {
     const response = await weatherApp.request(path!);
     const body = await response.json();
     if (!response.ok) process.exitCode = 1;
-    return { source, httpStatus: response.status, ...body };
+    const display = Array.isArray(body.data) && !process.argv.includes("--full")
+      ? { recordsReceived: body.data.length, sample: body.data.slice(0, 3), meta: body.meta }
+      : body;
+    return { source, httpStatus: response.status, ...display };
   }));
   console.log(JSON.stringify(results, null, 2));
 }

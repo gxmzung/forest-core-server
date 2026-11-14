@@ -50,6 +50,8 @@ export function parseAirQuality(rows: Row[], selected: { station: AirStation; di
   return parsed[0];
 }
 async function request(path: string, key: string, query: Record<string, string>, fetcher: typeof fetch) {
+  const stationService = path.startsWith("MsrstnInfoInqireSvc/");
+  const serviceName = stationService ? "측정소정보" : "대기오염정보";
   const url = new URL(`https://apis.data.go.kr/B552584/${path}`);
   let decoded = key.trim();
   if (!decoded) throw new WeatherError("NOT_CONFIGURED", "에어코리아 API 인증키 서버 설정이 필요합니다.", 503);
@@ -57,7 +59,11 @@ async function request(path: string, key: string, query: Record<string, string>,
   url.search = new URLSearchParams({ serviceKey: decoded, returnType: "json", ...query }).toString();
   try {
     const response = await fetcher(url, { signal: AbortSignal.timeout(5000) });
-    if (!response.ok) throw new WeatherError("PROVIDER_HTTP_ERROR", `에어코리아 HTTP ${response.status}`);
+    if (!response.ok) {
+      const auth = response.status === 401 || response.status === 403;
+      const code = auth ? stationService ? "AIR_STATION_AUTH_FAILED" : "AIR_OBSERVATION_AUTH_FAILED" : "PROVIDER_HTTP_ERROR";
+      throw new WeatherError(code, `에어코리아 ${serviceName} HTTP ${response.status}${auth ? " · 해당 서비스의 활용신청 승인 상태와 인증키를 확인하세요." : ""}`);
+    }
     return parseAirItems(await response.json());
   } catch (error) {
     if (error instanceof WeatherError) throw error;
