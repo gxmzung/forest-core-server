@@ -8,7 +8,10 @@
     "build": "tsc -p tsconfig.json",
     "start": "node --env-file-if-exists=.env dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --import tsx --test test/*.test.ts"
+    "test": "node --import tsx --test test/*.test.ts",
+    "fieldlink": "tsx --env-file-if-exists=.env src/fieldlink/start.ts",
+    "check:weather": "node --env-file-if-exists=.env --import tsx scripts/check-weather.ts",
+    "start:weather": "node --env-file-if-exists=.env --import tsx scripts/start-weather.ts"
   },
   "dependencies": {
     "@hono/node-server": "2.0.11",
