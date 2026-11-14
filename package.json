@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "start:weather": "node --env-file-if-exists=.env --import tsx scripts/start-weather.ts",
     "check:weather": "node --env-file-if-exists=.env --import tsx scripts/check-weather.ts",
     "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
     "build": "tsc -p tsconfig.json",

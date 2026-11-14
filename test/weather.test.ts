@@ -3,6 +3,7 @@ import test from "node:test";
 import { Hono } from "hono";
 import { externalRoutes } from "../src/external/routes.js";
 import { fetchWeather, observationBase, parseWeather, weatherGrid } from "../src/external/weather.js";
+import { weatherApp } from "../src/external/weather-app.js";
 
 const grid = { nx: 60, ny: 127 };
 const base = { date: "20261114", time: "1300" };
@@ -50,4 +51,14 @@ test("날씨 경로는 잘못된 좌표를 400으로 거절한다", async () => 
   const app = new Hono().route("/external", externalRoutes);
   assert.equal((await app.request("/external/weather?latitude=&longitude=127")).status, 400);
   assert.equal((await app.request("/external/weather?latitude=0&longitude=0")).status, 400);
+});
+
+test("로컬 날씨 서버는 DB 없이 시작하고 로컬 CORS만 허용한다", async () => {
+  const response = await weatherApp.request("/health", { headers: { Origin: "http://127.0.0.1:15173" } });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("access-control-allow-origin"), "http://127.0.0.1:15173");
+  assert.equal((await response.json()).service, "local-weather-readonly");
+  const foreign = await weatherApp.request("/health", { headers: { Origin: "https://example.com" } });
+  assert.equal(foreign.headers.get("access-control-allow-origin"), null);
+  assert.equal((await weatherApp.request("/api/v1/assets", { method: "POST" })).status, 404);
 });

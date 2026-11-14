@@ -9,8 +9,9 @@ import { cachedExternal } from "./cache.js";
 import { fetchWeather, WeatherError, weatherGrid } from "./weather.js";
 
 export const externalRoutes = new Hono();
+export const weatherRoutes = new Hono();
 
-externalRoutes.get("/weather", async (c) => {
+weatherRoutes.get("/weather", async (c) => {
   try {
     const lat = c.req.query("latitude"), lon = c.req.query("longitude");
     if (!lat?.trim() || !lon?.trim()) throw new WeatherError("INVALID_LOCATION", "위도·경도가 필요합니다.", 400);
@@ -25,6 +26,8 @@ externalRoutes.get("/weather", async (c) => {
     return c.json({ error: { code: failure.code, message: failure.message } }, failure.status);
   }
 });
+
+externalRoutes.route("/", weatherRoutes);
 
 externalRoutes.get("/wildfire/firms", async (c) => {
   const bbox =
