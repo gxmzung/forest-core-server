@@ -1,10 +1,20 @@
 import { supabase } from "./client.js";
+import { config } from "../config.js";
+import { resolveLocalAssetMappings } from "../local-demo/db.js";
 import type { ExternalVendor, MappingResult } from "../types.js";
 
 type MappingRow = { vendor_device_id: string; asset_id: string; status: "ACTIVE" | "PENDING" | "SUSPENDED" };
 type AssetRow = { asset_id: string; asset_code: string };
 
 export async function resolveAssetMappings(vendor: ExternalVendor, deviceIds: string[], deviceTypes: Record<string, string> = {}): Promise<MappingResult[]> {
+  if (config.dbMode === "sqlite") {
+    return resolveLocalAssetMappings(
+      vendor,
+      deviceIds,
+      deviceTypes,
+    );
+  }
+
   const uniqueIds = [...new Set(deviceIds.filter(Boolean))];
   if (uniqueIds.length === 0) return [];
   const { data: existing, error: mappingError } = await supabase.schema("core").from("vendor_device_mapping")

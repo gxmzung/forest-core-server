@@ -6,8 +6,18 @@ import { fetchLandslideForecast } from "./landslide-forecast.js";
 import { fetchLandslideHistory } from "./landslide-history.js";
 import { fetchLandslideRegionalRisk } from "./landslide-regional-risk.js";
 import { cachedExternal } from "./cache.js";
+import { readExternalIntegrationStatus } from "./status.js";
+
+import { weatherRoutes } from "./weather-routes.js";
 
 export const externalRoutes = new Hono();
+externalRoutes.route("/", weatherRoutes);
+
+externalRoutes.get("/status", async (c) => {
+  return c.json(
+    await readExternalIntegrationStatus(),
+  );
+});
 
 externalRoutes.get("/wildfire/firms", async (c) => {
   const bbox =

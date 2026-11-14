@@ -1,5 +1,8 @@
+import { availabilityRoutes } from "./dashboard/network-availability.js";
+import { cameraRoutes } from "./video/cameras.js";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { config } from "./config.js";
 import { dashboardRoutes } from "./dashboard/routes.js";
 import { deviceRoutes } from "./device/routes.js";
 import { readCoreHealth } from "./device/health.js";
@@ -7,8 +10,29 @@ import { externalRoutes } from "./external/routes.js";
 import { videoRoutes } from "./video/routes.js";
 import { telemetryRoutes } from "./telemetry/routes.js";
 import { telemetryWebSocketRoutes } from "./telemetry/websocket.js";
+import { localDashboardRoutes, localHealth } from "./local-demo/routes.js";
+import {
+  internalFirelineRoutes
+} from "./alerts/routes.js";
+import {
+  internalKpiRoutes,
+  dashboardKpiRoutes
+} from "./kpi/routes.js";
 
 export const app = new Hono();
+
+app.use("*", async (c, next) => {
+  const startedAt = Date.now();
+  console.log(`[request:start] ${c.req.method} ${c.req.path}`);
+  try {
+    await next();
+  } finally {
+    const durationMs = Date.now() - startedAt;
+    console.log(
+      `[request:end] ${c.req.method} ${c.req.path} ${c.res.status} ${durationMs}ms`,
+    );
+  }
+});
 
 app.use(
   "/api/v1/dashboard/*",
@@ -50,15 +74,32 @@ app.use(
 );
 
 app.get("/", (c) => c.json({ service: "forest-core-server", status: "ok" }));
-app.get("/health", async (c) => c.json({ data: await readCoreHealth() }));
+app.get("/health", async (c) =>
+  c.json({
+    data:
+      config.dbMode === "sqlite"
+        ? localHealth()
+        : await readCoreHealth(),
+  }),
+);
 
 app.route("/internal/v1", deviceRoutes);
 app.route("/internal/v1/telemetry", telemetryRoutes);
 app.route("/internal/v1/telemetry", telemetryWebSocketRoutes);
+app.route("/internal/v1/kpi", internalKpiRoutes);
+app.route("/internal/v1/alerts", internalFirelineRoutes);
 
-app.route("/api/v1/dashboard", dashboardRoutes);
+app.route(
+  "/api/v1/dashboard",
+  config.dbMode === "sqlite"
+    ? localDashboardRoutes
+    : dashboardRoutes,
+);
 app.route("/api/v1/external", externalRoutes);
 app.route("/api/v1/assets", videoRoutes);
+app.route("/api/v1/dashboard/kpi", dashboardKpiRoutes);
+app.route("/api/v1/dashboard/cameras", cameraRoutes);
+app.route("/api/v1/dashboard/network-availability", availabilityRoutes);
 
 app.notFound((c) =>
   c.json(
@@ -72,14 +113,32 @@ app.notFound((c) =>
   ),
 );
 
-app.onError((error, c) =>
-  c.json(
+app.onError((error, c) => {
+  const origin = c.req.header("Origin");
+
+  if (
+    c.req.path.startsWith("/api/v1/external/") &&
+    origin &&
+    [
+      "http://127.0.0.1:15173",
+      "http://localhost:15173",
+      "https://wildfire.forest.tobeunicorn.kr",
+    ].includes(origin)
+  ) {
+    c.header(
+      "Access-Control-Allow-Origin",
+      origin,
+    );
+    c.header("Vary", "Origin");
+  }
+
+  return c.json(
     {
       error: {
         code: "PROCESSING_FAILURE",
-        message: error.message,
+        message: "요청 처리 중 오류가 발생했습니다.",
       },
     },
     502,
-  ),
-);
+  );
+});
