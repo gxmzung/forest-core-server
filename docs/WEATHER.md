@@ -74,3 +74,12 @@ npm.cmd run check:weather:outlook -- 36.37369 127.33471
 공식 자료:
 - https://www.data.go.kr/data/15084084/openapi.do
 - https://www.data.go.kr/data/15000415/openapi.do
+
+
+## 예보 기준정보·특보 접근 거부 진단
+
+사용자 노트북의 초단기실황은 성공했으나 초단기예보는 INVALID_RESPONSE(발표시각·격자 불일치), 특보는 상위 HTTP 403을 반환했다. 예보 원문이 아직 확보되지 않아 정확한 불일치 원인은 확정하지 않는다.
+
+예보 날짜·시간은 숫자/문자열을 모두 정규화하고 앞자리 0을 보존한다. 요청 발표시각·격자 검증은 유지하며 불일치 시 requested/returned 기준정보만 허용 목록으로 출력한다. 원문 payload·인증키·요청 URL은 출력하지 않는다. 수정 후 사용자 노트북의 check:weather:outlook 실행으로 실제 수신을 재검증해야 한다.
+
+특보 401/403은 KMA_WARNING_ACCESS_DENIED, 예보 401/403은 KMA_FORECAST_ACCESS_DENIED로 구분한다. 특보는 공공데이터포털 기상특보 조회서비스(15000415)의 특보현황조회 기능 이용 권한을 확인한다. 403만으로 심의 중/키 오류/정책 차단 중 정확한 사유를 확정하지 않는다.

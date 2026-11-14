@@ -41,12 +41,23 @@ function rainText(raw: unknown) {
   return /^(?:강수없음|\d+(?:\.\d+)?(?:\s*(?:~|～|-)\s*\d+(?:\.\d+)?)?\s*(?:mm)?\s*(?:미만|이상)?)$/.test(text) ? text : null;
 }
 
+function digits(raw: unknown, width: number): string | null {
+  if (typeof raw !== "string" && typeof raw !== "number") return null;
+  const value = String(raw).trim();
+  return new RegExp(`^\\d{1,${width}}$`).test(value) ? value.padStart(width, "0") : null;
+}
+
 export function parseForecast(payload: unknown, grid: Grid, base: Base, now: Date): WeatherForecast {
-  const matching = items(payload).filter((item) => item.baseDate === base.date && item.baseTime === base.time && Number(item.nx) === grid.nx && Number(item.ny) === grid.ny);
-  if (!matching.length) throw new WeatherError("INVALID_RESPONSE", "요청 발표시각·격자와 다른 예보 자료입니다.");
+  const records = items(payload);
+  const matching = records.filter((item) => digits(item.baseDate, 8) === base.date && digits(item.baseTime, 4) === base.time && Number(item.nx) === grid.nx && Number(item.ny) === grid.ny);
+  if (!matching.length) {
+    // 공개 격자·발표시각만 허용 목록으로 출력한다. 원문 payload·키·요청 URL은 포함하지 않는다.
+    const returned = records.slice(0, 2).map((item) => ({ baseDate: digits(item.baseDate, 8), baseTime: digits(item.baseTime, 4), nx: numeric(item.nx, 1, 149), ny: numeric(item.ny, 1, 253) }));
+    throw new WeatherError("INVALID_RESPONSE", `예보 기준정보 불일치: ${JSON.stringify({ requested: { ...base, ...grid }, returned })}`);
+  }
   const groups = new Map<string, Record<string, unknown>>();
   for (const item of matching) {
-    const validAt = kmaTime(String(item.fcstDate ?? ""), String(item.fcstTime ?? ""));
+    const validAt = kmaTime(digits(item.fcstDate, 8) ?? "", digits(item.fcstTime, 4) ?? "");
     if (Date.parse(validAt) <= now.getTime() || Date.parse(validAt) > now.getTime() + 6 * 3600_000) continue;
     const row = groups.get(validAt) ?? {};
     if (typeof item.category === "string") row[item.category] = item.fcstValue;
@@ -67,7 +78,13 @@ async function request(url: URL, options: Options) {
   url.searchParams.set("dataType", "JSON"); url.searchParams.set("pageNo", "1"); url.searchParams.set("numOfRows", "1000");
   try {
     const response = await (options.fetcher ?? fetch)(url, { signal: AbortSignal.timeout(3500) });
-    if (!response.ok) throw new WeatherError("PROVIDER_HTTP_ERROR", `기상청 응답 오류: HTTP ${response.status}`);
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        const warning = url.pathname.endsWith("getPwnStatus");
+        throw new WeatherError(warning ? "KMA_WARNING_ACCESS_DENIED" : "KMA_FORECAST_ACCESS_DENIED", `기상청 ${warning ? "기상특보" : "초단기예보"} API HTTP ${response.status} · 해당 서비스·상세기능의 활용신청 승인 상태와 인증키 권한을 확인하세요.`);
+      }
+      throw new WeatherError("PROVIDER_HTTP_ERROR", `기상청 응답 오류: HTTP ${response.status}`);
+    }
     return await response.json() as unknown;
   } catch (error) {
     if (error instanceof WeatherError) throw error;
