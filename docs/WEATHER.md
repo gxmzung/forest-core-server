@@ -50,3 +50,27 @@ DB 설정 없이 날씨만 실행하려면 서버 루트에서 npm run start:wea
 ## 회사 최신 Core 동기화
 
 2026-11-14 기준 회사 d1ea0bbb3509f5c3a716c57ba48cca1371dae33e의 DB·카메라·오디오 세션·FieldLink·KPI·외부기관 상태 기능을 기준으로 개인 저장소를 동기화한다. 날씨 전용 경로를 weather-routes.ts로 분리하여 start:weather가 DB 설정 없이 동작하도록 유지한다. 개인 저장소 배포는 차단하며 회사 저장소와 실제 서버는 수정하지 않는다.
+
+
+## 강수·예보·특보 확장 (2026-11-14)
+
+- 실황 `/api/v1/external/weather`에 `precipitation1hMm`(1시간 강수량, mm)와 `precipitationType`(PTY)을 추가한다. 미수신·기상청 결측 코드는 null이며 실제 0과 구분한다.
+- 예보 `/api/v1/external/weather/forecast?latitude=...&longitude=...`는 동일 격자의 초단기예보를 사용한다. `issuedAt`은 발표시각, `periods[].validAt`은 예보 대상시각이다. 현재보다 미래이며 6시간 이내인 자료만 반환한다. 수치·범주형 강수 예보를 그대로 구분한다.
+- 발표 직후 미제공 구간을 피하도록 이전 시간 30분 발표를 요청하고 NO_DATA일 때만 한 시간 전으로 재시도한다. 키·권한 오류를 반복 호출하지 않는다.
+- 특보 `/api/v1/external/weather/warnings`는 `WthrWrnInfoService/getPwnStatus` 전국 현황 원문이다. 좌표별 해당 여부를 추론하지 않는다. `issuedAt`·`effectiveAt`·`checkedAt`을 구분한다. 7일 범위를 벗어난 발표·빈 본문·권한 거부는 자료 없음/오류이며 ‘특보 없음’이 아니다.
+- 실황·예보·특보는 각각 별도 경로와 캐시를 사용한다. 예보 장애 시 실황은 유지되며 특보는 장애 시 과거 캐시 대체를 하지 않는다. 브라우저에 남은 마지막 특보는 지연 안내와 함께 표시한다.
+- 특보 서비스는 공공데이터포털의 **기상청_기상특보 조회서비스** 활용신청이 별도로 필요하다. 같은 일반 인증키로 시도하며 다른 키가 필요하면 서버 `.env`에 `KMA_WARNING_SERVICE_KEY`를 설정한다. 키는 브라우저·Git에 넣지 않는다.
+
+### 실제 응답 확인
+
+서버 루트에서 아래 명령을 실행하면 실황·예보·전국 특보를 각각 확인한다. 각 경로는 GET으로 외부 자료만 읽으며 DB·장치 제어는 하지 않는다. 하나라도 실패하면 종료코드는 1이고 나머지 서비스 결과도 함께 출력한다.
+
+```powershell
+npm.cmd run check:weather:outlook -- 36.37369 127.33471
+```
+
+개발 환경의 실제 호출 시도에서는 세 서비스 모두 PROVIDER_UNAVAILABLE로 실제 응답을 받지 못했다. 사용자 노트북에서는 기존 실황 수신만 확인된 상태이며 **이번 확장의 실제 예보·특보 수신은 미검증**이다. 자동시험의 표본 응답을 실제 관측 결과로 취급하지 않는다.
+
+공식 자료:
+- https://www.data.go.kr/data/15084084/openapi.do
+- https://www.data.go.kr/data/15000415/openapi.do
