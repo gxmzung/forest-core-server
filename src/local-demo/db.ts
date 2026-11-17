@@ -229,6 +229,9 @@ function initSchema(
       received_at DESC
     );
 
+    CREATE INDEX IF NOT EXISTS idx_vendor_message_vendor_received
+    ON vendor_message(vendor_code, received_at DESC);
+
     CREATE INDEX IF NOT EXISTS idx_vendor_message_device_epoch
     ON vendor_message(source_device_id, julianday(occurred_at) DESC, julianday(received_at) DESC)
     WHERE status = 'PERSISTED' AND payload_type = 'RTK_POSITION';
@@ -426,9 +429,9 @@ export function findLocalVendorHealthState(
   const latestMessage = db
     .prepare(`
       SELECT received_at, status
-      FROM vendor_message
+      FROM vendor_message INDEXED BY idx_vendor_message_vendor_received
       WHERE vendor_code = ?
-      ORDER BY rowid DESC
+      ORDER BY received_at DESC
       LIMIT 1
     `)
     .get(vendor) as unknown as Row | undefined;
