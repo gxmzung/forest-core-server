@@ -1209,8 +1209,9 @@ export function slenoMessages(
   const db = localDb();
   const devices = db.prepare("SELECT asset_id FROM asset WHERE vendor_code='JININFRA' AND status<>'INACTIVE'").all();
   const perDevice = Math.max(1, Math.floor(limit / Math.max(1, devices.length)));
+  // Vendor-wide indexes scan the full history for devices with few or no packets.
   const rows = devices.flatMap(device => db.prepare(`
-    SELECT * FROM vendor_message
+    SELECT * FROM vendor_message INDEXED BY idx_vendor_message_device_received
     WHERE source_device_id=? AND vendor_code='JININFRA' AND status='PERSISTED'
     ORDER BY received_at DESC LIMIT ?
   `).all(String(device.asset_id), perDevice)) as unknown as Row[];
