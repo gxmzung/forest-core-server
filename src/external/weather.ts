@@ -1,4 +1,4 @@
-import { fetchWithTimeout } from "./fetch-with-timeout.js";
+import { fetchWeatherProvider } from "./weather-provider.js";
 
 export function weatherCoordinates(geometry: unknown): [number, number] | null {
   if (!geometry || typeof geometry !== "object") return null;
@@ -22,9 +22,7 @@ export async function fetchCurrentWeather(eventId: string, areaName: string, coo
   const [longitude, latitude] = coordinates;
   const url = new URL("https://api.open-meteo.com/v1/forecast");
   url.search = new URLSearchParams({ latitude: String(latitude), longitude: String(longitude), current: "temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,precipitation,surface_pressure", wind_speed_unit: "ms", timeformat: "unixtime", timezone: "Asia/Seoul" }).toString();
-  const response = await fetchWithTimeout(url);
-  if (!response.ok) throw new Error("Weather provider unavailable");
-  const body = await response.json() as { current?: Record<string, unknown> };
+  const body = await fetchWeatherProvider(url) as { current?: Record<string, unknown> };
   const current = body.current;
   if (!current || typeof current.time !== "number" || !Number.isFinite(current.time) || typeof current.interval !== "number" || !Number.isFinite(current.interval) || current.interval < 60 || current.interval > 86400) throw new Error("Invalid weather source time");
   const intervalSeconds = current.interval;
