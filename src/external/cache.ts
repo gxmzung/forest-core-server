@@ -10,7 +10,7 @@ const entries = new Map<string, CacheEntry<unknown>>();
 export async function cachedExternal<T>(
   key: string,
   loader: () => Promise<T>,
-  options: { ttlMs?: number; staleIfErrorMs?: number; now?: () => number } = {},
+  options: { ttlMs?: number; staleIfErrorMs?: number; now?: () => number; expiresAt?: (value: T) => number } = {},
 ): Promise<{ value: T; cache: "HIT" | "MISS" | "STALE" }> {
   const now = (options.now ?? Date.now)();
   const ttlMs = options.ttlMs ?? 5 * 60_000;
@@ -25,7 +25,8 @@ export async function cachedExternal<T>(
   entries.set(key, entry);
   try {
     const value = await pending;
-    entries.set(key, { value, freshUntil: now + ttlMs, staleUntil: now + ttlMs + staleIfErrorMs });
+    const freshUntil = options.expiresAt?.(value) ?? now + ttlMs;
+    entries.set(key, { value, freshUntil, staleUntil: freshUntil + staleIfErrorMs });
     return { value, cache: "MISS" };
   } catch (error) {
     entry.pending = undefined;

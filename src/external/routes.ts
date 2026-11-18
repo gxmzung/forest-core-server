@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { fetchCurrentWeather, weatherCoordinates } from "./weather.js";
 
 import { fetchFirmsArea } from "./firms.js";
 import { fetchWildfireRisk } from "./wildfire-risk.js";
@@ -9,6 +10,24 @@ import { cachedExternal } from "./cache.js";
 import { readExternalIntegrationStatus } from "./status.js";
 
 export const externalRoutes = new Hono();
+
+externalRoutes.get("/weather/current", async (c) => {
+  const { localDb } = await import("../local-demo/db.js");
+  const eventId = c.req.query("eventId") ?? "";
+  const event = localDb().prepare("SELECT event_name, metadata_json FROM disaster_event WHERE event_id = ?").get(eventId);
+  if (!event) return c.json({ error: { message: "재난 구역을 찾을 수 없습니다." } }, 404);
+  const metadata = JSON.parse(String(event.metadata_json)) as Record<string, unknown>;
+  const coordinates = weatherCoordinates(metadata.geometry);
+  if (!coordinates) return c.json({ error: { message: "산불 구역의 위치를 먼저 설정해 주세요." } }, 400);
+  const areaName = String(metadata.location_name ?? event.event_name);
+  try {
+    const result = await cachedExternal(`weather:${eventId}:${coordinates.join(",")}:${areaName}`, () => fetchCurrentWeather(eventId, areaName, coordinates), { expiresAt: value => Date.parse(value.nextRefreshAt) });
+    c.header("Cache-Control", "no-store");
+    return c.json({ data: { ...result.value, stale: result.cache === "STALE" } });
+  } catch {
+    return c.json({ error: { message: "날씨를 가져오지 못했습니다. 잠시 후 다시 확인합니다." } }, 502);
+  }
+});
 
 externalRoutes.get("/status", async (c) => {
   return c.json(
