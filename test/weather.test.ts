@@ -1,64 +1,38 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { Hono } from "hono";
-import { weatherRoutes as externalRoutes } from "../src/external/weather-routes.js";
-import { fetchWeather, observationBase, parseWeather, weatherGrid } from "../src/external/weather.js";
-import { weatherApp } from "../src/external/weather-app.js";
+import { fetchCurrentWeather, weatherCoordinates } from "../src/external/weather.js";
+import { cachedExternal, clearExternalCache } from "../src/external/cache.js";
 
-const grid = { nx: 60, ny: 127 };
-const base = { date: "20261114", time: "1300" };
-function fixture(values: Record<string, unknown> = { T1H: "12.5", REH: "0", WSD: "0", VEC: "-99" }) {
-  return { response: { header: { resultCode: "00" }, body: { items: { item: Object.entries(values).map(([category, obsrValue]) => ({ category, obsrValue, baseDate: base.date, baseTime: base.time, ...grid })) } } } };
-}
+test("산불 구역 Point와 Polygon의 중심을 사용하고 없는 위치는 거절한다", () => {
+  assert.deepEqual(weatherCoordinates({ type: "Point", coordinates: [126.6, 36.7] }), [126.6, 36.7]);
+  assert.deepEqual(weatherCoordinates({ type: "Polygon", coordinates: [[[126, 36], [128, 38], [126, 36]]] }), [127, 37]);
+  assert.equal(weatherCoordinates(null), null);
+  assert.equal(weatherCoordinates({ type: "Point", coordinates: [999, 36] }), null);
+});
 
-test("공식 기준점과 서울 위치를 5km 격자로 변환한다", () => {
-  assert.deepEqual(weatherGrid(38, 126), { nx: 43, ny: 136 });
-  assert.deepEqual(weatherGrid(37.5665, 126.978), grid);
-  assert.throws(() => weatherGrid(NaN, 127));
-  assert.throws(() => weatherGrid(0, 0));
-});
-test("KST 날짜 경계를 넘어 지난 정시를 조회한다", () => {
-  assert.deepEqual(observationBase(new Date("2026-11-13T15:20:00Z")), { date: "20261113", time: "2300" });
-});
-test("실제 0과 결측을 구분하고 요청 시각·격자를 확인한다", () => {
-  const value = parseWeather(fixture(), grid, base);
-  assert.equal(value.temperatureC, 12.5);
-  assert.equal(value.humidityPct, 0);
-  assert.equal(value.windSpeedMps, 0);
-  assert.equal(value.windDirectionDeg, null);
-  assert.equal(value.observedAt, "2026-11-14T13:00:00+09:00");
-  assert.throws(() => parseWeather(fixture(), { nx: 1, ny: 1 }, base));
-  assert.throws(() => parseWeather(fixture({ T1H: "", WSD: "-999" }), grid, base));
-});
-test("키 누락 시 네트워크 호출 없이 실패한다", async () => {
-  await assert.rejects(fetchWeather(grid, { serviceKey: "", fetcher: async () => { throw new Error("호출 금지"); } }), { code: "NOT_CONFIGURED" });
-});
-test("자료 미발표일 때만 이전 시각을 재조회하고 키를 올바르게 인코딩한다", async () => {
-  const times: string[] = [];
-  const result = await fetchWeather(grid, { serviceKey: "test%2Bkey", now: new Date("2026-11-14T06:10:00Z"), fetcher: async (input) => {
+test("원본 시각과 interval로 갱신을 예약하며 누락값을 0으로 만들지 않는다", async () => {
+  const original = globalThis.fetch;
+  const now = Date.parse("2026-11-18T00:03:00Z");
+  globalThis.fetch = async input => {
     const url = new URL(String(input));
-    assert.equal(url.searchParams.get("serviceKey"), "test+key");
-    times.push(url.searchParams.get("base_time")!);
-    return Response.json(times.length === 1 ? { response: { header: { resultCode: "03" } } } : fixture());
-  } });
-  assert.deepEqual(times, ["1400", "1300"]);
-  assert.equal(result.temperatureC, 12.5);
-});
-test("요청 실패 원문에 포함된 키·URL은 전달하지 않는다", async () => {
-  await assert.rejects(fetchWeather(grid, { serviceKey: "sensitive", fetcher: async () => { throw new Error("https://example.test/?key=sensitive"); } }), (error: unknown) => error instanceof Error && !error.message.includes("sensitive"));
-});
-test("날씨 경로는 잘못된 좌표를 400으로 거절한다", async () => {
-  const app = new Hono().route("/external", externalRoutes);
-  assert.equal((await app.request("/external/weather?latitude=&longitude=127")).status, 400);
-  assert.equal((await app.request("/external/weather?latitude=0&longitude=0")).status, 400);
-});
-
-test("로컬 날씨 서버는 DB 없이 시작하고 로컬 CORS만 허용한다", async () => {
-  const response = await weatherApp.request("/health", { headers: { Origin: "http://127.0.0.1:15173" } });
-  assert.equal(response.status, 200);
-  assert.equal(response.headers.get("access-control-allow-origin"), "http://127.0.0.1:15173");
-  assert.equal((await response.json()).service, "local-weather-readonly");
-  const foreign = await weatherApp.request("/health", { headers: { Origin: "https://example.com" } });
-  assert.equal(foreign.headers.get("access-control-allow-origin"), null);
-  assert.equal((await weatherApp.request("/api/v1/assets", { method: "POST" })).status, 404);
+    assert.equal(url.searchParams.get("latitude"), "36.7");
+    assert.equal(url.searchParams.get("longitude"), "126.6");
+    assert.equal(url.searchParams.get("wind_speed_unit"), "ms");
+    return Response.json({ current: { time: Date.parse("2026-11-18T00:00:00Z") / 1000, interval: 900, temperature_2m: 0 } });
+  };
+  try {
+    const result = await fetchCurrentWeather("event", "산불 구역", [126.6, 36.7], now);
+    assert.equal(result.nextRefreshAt, "2026-11-18T00:15:30.000Z");
+    assert.equal(result.observation.temperatureC, 0);
+    assert.equal(result.observation.humidityPct, null);
+    clearExternalCache();
+    let calls = 0;
+    const loader = async () => { calls++; return result; };
+    const options = { now: () => now, expiresAt: (value: typeof result) => Date.parse(value.nextRefreshAt) };
+    await cachedExternal("weather-test", loader, options);
+    await cachedExternal("weather-test", loader, { ...options, now: () => now + 600_000 });
+    assert.equal(calls, 1);
+    await cachedExternal("weather-test", loader, { ...options, now: () => now + 900_000 });
+    assert.equal(calls, 2);
+  } finally { globalThis.fetch = original; }
 });

@@ -90,7 +90,7 @@ rtkRoutes.get("/packets", (c) => {
   const requestedId = c.req.query("assetId");
   const selected = requestedId ? devices.find(device => device.id === requestedId) : devices[0];
   if (requestedId && !selected) return c.json({error:{code:"ASSET_NOT_FOUND",message:"운용 중인 RTK 장비를 찾을 수 없습니다."}},404);
-  const rows = selected ? db.prepare(`SELECT * FROM vendor_message
+  const rows = selected ? db.prepare(`SELECT * FROM vendor_message INDEXED BY idx_vendor_message_device_received
     WHERE source_device_id=? AND vendor_code='JININFRA' AND payload_type='RTK_POSITION'
     ORDER BY received_at DESC,rowid DESC LIMIT 101`).all(selected.id) as Json[] : [];
   const records = rows.map(mapRtkPacket);
