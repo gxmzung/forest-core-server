@@ -229,6 +229,9 @@ function initSchema(
       received_at DESC
     );
 
+    CREATE INDEX IF NOT EXISTS idx_vendor_message_vendor_received
+    ON vendor_message(vendor_code, received_at DESC);
+
     CREATE INDEX IF NOT EXISTS idx_vendor_message_device_epoch
     ON vendor_message(source_device_id, julianday(occurred_at) DESC, julianday(received_at) DESC)
     WHERE status = 'PERSISTED' AND payload_type = 'RTK_POSITION';
@@ -426,9 +429,9 @@ export function findLocalVendorHealthState(
   const latestMessage = db
     .prepare(`
       SELECT received_at, status
-      FROM vendor_message
+      FROM vendor_message INDEXED BY idx_vendor_message_vendor_received
       WHERE vendor_code = ?
-      ORDER BY rowid DESC
+      ORDER BY received_at DESC
       LIMIT 1
     `)
     .get(vendor) as unknown as Row | undefined;
@@ -1209,8 +1212,9 @@ export function slenoMessages(
   const db = localDb();
   const devices = db.prepare("SELECT asset_id FROM asset WHERE vendor_code='JININFRA' AND status<>'INACTIVE'").all();
   const perDevice = Math.max(1, Math.floor(limit / Math.max(1, devices.length)));
+  // Vendor-wide indexes scan the full history for devices with few or no packets.
   const rows = devices.flatMap(device => db.prepare(`
-    SELECT * FROM vendor_message
+    SELECT * FROM vendor_message INDEXED BY idx_vendor_message_device_received
     WHERE source_device_id=? AND vendor_code='JININFRA' AND status='PERSISTED'
     ORDER BY received_at DESC LIMIT ?
   `).all(String(device.asset_id), perDevice)) as unknown as Row[];
